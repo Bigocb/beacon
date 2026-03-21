@@ -410,11 +410,11 @@ export const SaveAnalyticsPage: React.FC<SaveAnalyticsPageProps> = ({ saveData, 
   useEffect(() => {
     const loadPlayerData = async () => {
       const savePath = saveData?.file_path || saveData?.path;
-      console.log(`🎮 LoadPlayerData - UUID: ${selectedPlayerUUID}, Path: ${savePath}`);
+      // Skip if prerequisites not met
       if (!selectedPlayerUUID || !savePath) {
-        console.log('❌ Missing UUID or savePath, skipping load');
         return;
       }
+      console.log(`🎮 LoadPlayerData - UUID: ${selectedPlayerUUID}, Path: ${savePath}`);
 
       setLoadingPlayerData(true);
       try {
@@ -440,11 +440,11 @@ export const SaveAnalyticsPage: React.FC<SaveAnalyticsPageProps> = ({ saveData, 
   useEffect(() => {
     const loadProgressData = async () => {
       const savePath = saveData?.file_path || saveData?.path;
-      console.log(`📊 loadProgressData - UUID: ${selectedPlayerUUID}, activeTab: ${activeTab}, savePath: ${savePath}`);
+      // Skip if prerequisites not met or tab is not one that needs this data
       if (!selectedPlayerUUID || !savePath || (activeTab !== 'progress' && activeTab !== 'advancements' && activeTab !== 'timeline')) {
-        console.log('⏭️ Skipping load - missing required data');
         return;
       }
+      console.log(`📊 loadProgressData - UUID: ${selectedPlayerUUID}, activeTab: ${activeTab}, savePath: ${savePath}`);
 
       setLoadingProgress(true);
       try {

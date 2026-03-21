@@ -15,6 +15,7 @@ const api = {
     initiateLogin: () => ipcRenderer.invoke('auth:initiateLogin'),
     handleCallback: (code: string) => ipcRenderer.invoke('auth:handleCallback', code),
     getCurrentUser: () => ipcRenderer.invoke('auth:getCurrentUser'),
+    getLocalAccounts: () => ipcRenderer.invoke('auth:getLocalAccounts'),
     createLocalUser: (username: string) => ipcRenderer.invoke('auth:createLocalUser', username),
     logout: () => ipcRenderer.invoke('auth:logout'),
     onOAuthCallback: (callback: (data: any) => void) => {

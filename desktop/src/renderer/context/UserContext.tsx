@@ -46,27 +46,36 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     const initializeUser = async () => {
       try {
         const token = localStorage.getItem('minecraft_tracker_auth_token');
+        console.log('👤 [UserContext] Initializing - Token found:', !!token);
         if (!token) {
+          console.log('⚠️ [UserContext] No token found, skipping backend fetch');
           setLoading(false);
           return;
         }
 
         // Try to fetch current user from backend
+        console.log('📤 [UserContext] Fetching user from backend...');
         const response = await fetch('http://localhost:3000/users/me', {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
         });
 
+        console.log('📥 [UserContext] Backend response status:', response.status);
         if (response.ok) {
           const userData = await response.json();
           setCurrentUser(userData);
-          console.log('👤 [UserContext] User initialized from backend:', userData.username);
+          console.log('✅ [UserContext] User initialized from backend:', { uuid: userData.minecraft_uuid, username: userData.username });
         } else if (response.status === 401) {
           // Token invalid, clear it
           localStorage.removeItem('minecraft_tracker_auth_token');
           setCurrentUser(null);
-          console.log('⚠️ [UserContext] Auth token invalid, cleared');
+          console.log('⚠️ [UserContext] Auth token invalid (401), cleared');
+        } else {
+          console.warn('⚠️ [UserContext] Backend fetch failed with status:', response.status);
+          // For local accounts, the backend might not have the user
+          // The user should have been set directly by LoginPage via setCurrentUser()
+          console.log('ℹ️ [UserContext] Keeping currentUser as-is (may have been set by LoginPage)');
         }
       } catch (err) {
         console.error('❌ [UserContext] Error initializing user:', err);

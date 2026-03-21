@@ -252,9 +252,34 @@ export const queries: any = {
   `),
 
   // Auth
-  saveAuth: db.prepare(`
-    INSERT OR REPLACE INTO auth (id, user_uuid, username, token, token_expires_at)
+  // Check if auth exists to avoid CASCADE DELETE on REPLACE
+  getAuthById: db.prepare('SELECT * FROM auth WHERE id = ?'),
+
+  // Update existing auth entry
+  updateAuth: db.prepare(`
+    UPDATE auth SET
+      user_uuid = ?,
+      username = ?,
+      token = ?,
+      token_expires_at = ?,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `),
+
+  // Insert new auth entry
+  insertAuth: db.prepare(`
+    INSERT INTO auth (id, user_uuid, username, token, token_expires_at)
     VALUES (?, ?, ?, ?, ?)
+  `),
+
+  saveAuth: db.prepare(`
+    INSERT INTO auth (id, user_uuid, username, token, token_expires_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      username = excluded.username,
+      token = excluded.token,
+      token_expires_at = excluded.token_expires_at,
+      updated_at = CURRENT_TIMESTAMP
   `),
 
   getAuth: db.prepare('SELECT * FROM auth WHERE user_uuid = ?'),

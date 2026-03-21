@@ -12,12 +12,11 @@
 // Most endpoints that use this pool are not yet implemented
 const mockPool = {
   query: async (sql: string, params?: any[]): Promise<{ rows: any[] }> => {
-    console.warn('⚠️  [Backend] PostgreSQL pool not available - feature not implemented');
+    // Silently return empty rows - PostgreSQL is not used in v0.1
     return { rows: [] as any[] };
   },
 
   connect: async () => {
-    console.warn('⚠️  [Backend] PostgreSQL pool not available - feature not implemented');
     return {
       query: async (sql: string, params?: any[]): Promise<{ rows: any[] }> => ({ rows: [] as any[] }),
       release: () => {},
@@ -25,7 +24,7 @@ const mockPool = {
   },
 
   end: async () => {
-    console.warn('⚠️  [Backend] PostgreSQL pool not available - feature not implemented');
+    // Silent operation
   },
 };
 

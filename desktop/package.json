@@ -12,7 +12,10 @@
     "build-electron": "tsc --outDir dist",
     "start": "electron .",
     "pack": "electron-builder --dir",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build && electron-builder",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage"
   },
   "dependencies": {
     "axios": "^1.6.0",
@@ -27,16 +30,22 @@
     "uuid": "^9.0.0"
   },
   "devDependencies": {
+    "@testing-library/react": "^14.1.2",
+    "@testing-library/user-event": "^14.5.1",
     "@types/better-sqlite3": "^7.6.8",
     "@types/node": "^20.10.5",
     "@types/react": "^18.2.37",
     "@types/react-dom": "^18.2.15",
     "@vitejs/plugin-react": "^4.2.1",
+    "@vitest/coverage-v8": "^1.0.0",
+    "@vitest/ui": "^1.0.0",
     "concurrently": "^8.2.0",
     "electron": "^27.0.0",
     "electron-builder": "^24.6.4",
+    "jsdom": "^23.0.1",
     "typescript": "^5.3.3",
     "vite": "^5.0.7",
+    "vitest": "^1.0.0",
     "wait-on": "^7.0.1"
   },
   "build": {

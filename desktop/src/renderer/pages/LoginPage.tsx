@@ -12,14 +12,27 @@ declare global {
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { setCurrentUser } = useUser();
+  const { setCurrentUser, currentUser } = useUser();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [awaitingCallback, setAwaitingCallback] = useState(false);
   const [showLocalSetup, setShowLocalSetup] = useState(false);
+  const [showCreateNew, setShowCreateNew] = useState(false);
   const [localUsername, setLocalUsername] = useState('');
+  const [lastLocalUsername, setLastLocalUsername] = useState<string | null>(null);
+  const [existingAccounts, setExistingAccounts] = useState<string[]>([]);
+  const [selectedAccount, setSelectedAccount] = useState<string>('');
 
   useEffect(() => {
+    // Load last used local account username from localStorage
+    const saved = localStorage.getItem('beacon_last_local_username');
+    if (saved) {
+      setLastLocalUsername(saved);
+    }
+
+    // Load existing local accounts
+    loadExistingAccounts();
+
     // Listen for OAuth callback from main process
     window.api.auth.onOAuthCallback(async (data: any) => {
       if (data.code) {
@@ -27,6 +40,28 @@ export default function LoginPage() {
       }
     });
   }, []);
+
+  // Navigate to dashboard when user is set in context
+  useEffect(() => {
+    if (currentUser?.minecraft_uuid) {
+      console.log('✅ [LoginPage] User set in context, navigating to dashboard');
+      console.log('  User UUID:', currentUser.minecraft_uuid);
+      console.log('  Username:', currentUser.username);
+      navigate('/dashboard');
+    }
+  }, [currentUser?.minecraft_uuid, navigate]);
+
+  async function loadExistingAccounts() {
+    try {
+      const result = await window.api.auth.getLocalAccounts();
+      if (result.success) {
+        setExistingAccounts(result.accounts || []);
+        console.log('📋 [LoginPage] Loaded', result.accounts?.length || 0, 'existing accounts');
+      }
+    } catch (err) {
+      console.error('❌ [LoginPage] Error loading accounts:', err);
+    }
+  }
 
   async function handleMinecraftLogin() {
     try {
@@ -62,14 +97,19 @@ export default function LoginPage() {
 
       if (result.success) {
         console.log('✅ [LoginPage] Minecraft auth successful, user:', result.user.username);
+        console.log('  UUID:', result.user.uuid);
+        console.log('  Email:', result.user.email);
+        // Store JWT token ✅ FIX: This was missing!
+        storeToken(result.token);
         // Store user in context
-        setCurrentUser({
+        const userData = {
           minecraft_uuid: result.user.uuid,
           username: result.user.username,
           email: result.user.email,
-        });
-        // Navigate to dashboard
-        navigate('/dashboard');
+        };
+        console.log('📝 [LoginPage] Setting currentUser:', userData);
+        setCurrentUser(userData);
+        // Navigation will happen in useEffect when currentUser is set
       } else {
         setError(result.error || 'Failed to authenticate with Minecraft');
         setAwaitingCallback(false);
@@ -82,9 +122,11 @@ export default function LoginPage() {
     }
   }
 
-  async function handleCreateLocalUser() {
+  async function handleCreateLocalUser(username?: string) {
     try {
-      if (!localUsername.trim()) {
+      const usernameToUse = username || localUsername.trim();
+
+      if (!usernameToUse) {
         setError('Please enter a username');
         return;
       }
@@ -92,25 +134,29 @@ export default function LoginPage() {
       setLoading(true);
       setError(null);
 
-      console.log('👤 [LoginPage] Creating local user:', localUsername);
-      const result = await window.api.auth.createLocalUser(localUsername.trim());
+      console.log('👤 [LoginPage] Logging in with local user:', usernameToUse);
+      const result = await window.api.auth.createLocalUser(usernameToUse);
 
       if (result.success) {
-        console.log('✅ [LoginPage] Local user created:', result.user.username);
+        console.log('✅ [LoginPage] Local user authenticated:', result.user.username);
+        console.log('  UUID:', result.user.uuid);
         // Store JWT token
         storeToken(result.token);
+        // ✅ Save username for quick re-login after logout
+        localStorage.setItem('beacon_last_local_username', result.user.username);
         // Store user in context
-        setCurrentUser({
+        const userData = {
           minecraft_uuid: result.user.uuid,
           username: result.user.username,
-        });
-        // Navigate to dashboard
-        navigate('/dashboard');
+        };
+        console.log('📝 [LoginPage] Setting currentUser:', userData);
+        setCurrentUser(userData);
+        // Navigation will happen in useEffect when currentUser is set
       } else {
-        setError(result.error || 'Failed to create local user');
+        setError(result.error || 'Failed to authenticate');
       }
     } catch (err: any) {
-      setError(err.message || 'Error creating local user');
+      setError(err.message || 'Error authenticating user');
     } finally {
       setLoading(false);
     }
@@ -143,23 +189,51 @@ export default function LoginPage() {
                 </p>
               </div>
 
-              <div className="divider">
-                <span>or</span>
-              </div>
+              {/* Show Welcome Back card if recent account, otherwise show Local Mode */}
+              {lastLocalUsername ? (
+                <div className="welcome-back-card-inline">
+                  <h3>👋 Welcome back, {lastLocalUsername}!</h3>
+                  <button
+                    className="login-button local-button welcome-button"
+                    onClick={() => {
+                      handleCreateLocalUser(lastLocalUsername);
+                    }}
+                    disabled={loading || awaitingCallback}
+                  >
+                    {loading ? 'Logging in...' : '🔐 Log Back In'}
+                  </button>
+                  <button
+                    className="login-button secondary"
+                    onClick={() => {
+                      setLastLocalUsername(null);
+                      localStorage.removeItem('beacon_last_local_username');
+                    }}
+                    disabled={loading}
+                  >
+                    Use a different account
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="divider">
+                    <span>or</span>
+                  </div>
 
-              <div className="option-group">
-                <h3>Quick Start (Optional)</h3>
-                <button
-                  className="login-button local-button"
-                  onClick={() => setShowLocalSetup(true)}
-                  disabled={loading}
-                >
-                  🏠 Single-User Mode
-                </button>
-                <p className="option-description">
-                  Create a local account. All saves stay on your computer.
-                </p>
-              </div>
+                  <div className="option-group">
+                    <h3>Quick Start (Optional)</h3>
+                    <button
+                      className="login-button local-button"
+                      onClick={() => setShowLocalSetup(true)}
+                      disabled={loading}
+                    >
+                      🏠 Local Mode
+                    </button>
+                    <p className="option-description">
+                      Create and manage local accounts. All saves stay on your computer.
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="login-info">
@@ -172,40 +246,133 @@ export default function LoginPage() {
           </>
         ) : (
           <>
-            <div className="local-setup">
-              <h2>Create Local Account</h2>
-              <p>Choose a username for your save tracker:</p>
-              <input
-                type="text"
-                value={localUsername}
-                onChange={(e) => setLocalUsername(e.target.value)}
-                placeholder="Your username (e.g., 'MinecraftPlayer')"
-                disabled={loading}
-                onKeyPress={(e) => e.key === 'Enter' && handleCreateLocalUser()}
-                autoFocus
-                className="username-input"
-              />
-              <div className="local-setup-buttons">
-                <button
-                  className="login-button local-button"
-                  onClick={handleCreateLocalUser}
-                  disabled={loading || !localUsername.trim()}
-                >
-                  {loading ? 'Creating...' : 'Create Account'}
-                </button>
-                <button
-                  className="login-button secondary"
-                  onClick={() => {
-                    setShowLocalSetup(false);
-                    setLocalUsername('');
-                    setError(null);
-                  }}
-                  disabled={loading}
-                >
-                  Back
-                </button>
+            {!showCreateNew ? (
+              // Dropdown to select existing account or create new
+              <div className="local-setup">
+                <h2>Select Account</h2>
+                {existingAccounts.length > 0 ? (
+                  <>
+                    <p>Choose an account to continue:</p>
+                    <select
+                      value={selectedAccount}
+                      onChange={(e) => setSelectedAccount(e.target.value)}
+                      disabled={loading}
+                      className="account-select"
+                      autoFocus
+                    >
+                      <option value="">-- Select account --</option>
+                      {existingAccounts.map((account) => (
+                        <option key={account} value={account}>
+                          {account}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="local-setup-buttons">
+                      <button
+                        className="login-button local-button"
+                        onClick={() => {
+                          if (selectedAccount) {
+                            handleCreateLocalUser(selectedAccount);
+                          }
+                        }}
+                        disabled={loading || !selectedAccount}
+                      >
+                        {loading ? 'Logging in...' : '🔓 Log In'}
+                      </button>
+                      <button
+                        className="login-button secondary"
+                        onClick={() => setShowCreateNew(true)}
+                        disabled={loading}
+                      >
+                        ➕ Create New Account
+                      </button>
+                      <button
+                        className="login-button secondary"
+                        onClick={() => {
+                          setShowLocalSetup(false);
+                          setSelectedAccount('');
+                          setError(null);
+                        }}
+                        disabled={loading}
+                      >
+                        Back
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  // No existing accounts, go straight to create
+                  <>
+                    <p>Create your first local account:</p>
+                    <input
+                      type="text"
+                      value={localUsername}
+                      onChange={(e) => setLocalUsername(e.target.value)}
+                      placeholder="Your username (e.g., 'MinecraftPlayer')"
+                      disabled={loading}
+                      onKeyPress={(e) => e.key === 'Enter' && handleCreateLocalUser()}
+                      autoFocus
+                      className="username-input"
+                    />
+                    <div className="local-setup-buttons">
+                      <button
+                        className="login-button local-button"
+                        onClick={() => handleCreateLocalUser()}
+                        disabled={loading || !localUsername.trim()}
+                      >
+                        {loading ? 'Creating...' : 'Create Account'}
+                      </button>
+                      <button
+                        className="login-button secondary"
+                        onClick={() => {
+                          setShowLocalSetup(false);
+                          setLocalUsername('');
+                          setError(null);
+                        }}
+                        disabled={loading}
+                      >
+                        Back
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
-            </div>
+            ) : (
+              // Create new account form
+              <div className="local-setup">
+                <h2>Create New Account</h2>
+                <p>Choose a username for your save tracker:</p>
+                <input
+                  type="text"
+                  value={localUsername}
+                  onChange={(e) => setLocalUsername(e.target.value)}
+                  placeholder="Your username (e.g., 'MinecraftPlayer')"
+                  disabled={loading}
+                  onKeyPress={(e) => e.key === 'Enter' && handleCreateLocalUser()}
+                  autoFocus
+                  className="username-input"
+                />
+                <div className="local-setup-buttons">
+                  <button
+                    className="login-button local-button"
+                    onClick={() => handleCreateLocalUser()}
+                    disabled={loading || !localUsername.trim()}
+                  >
+                    {loading ? 'Creating...' : 'Create Account'}
+                  </button>
+                  <button
+                    className="login-button secondary"
+                    onClick={() => {
+                      setShowCreateNew(false);
+                      setLocalUsername('');
+                      setError(null);
+                    }}
+                    disabled={loading}
+                  >
+                    Back
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

@@ -120,7 +120,8 @@ export function registerScannerIPC() {
     try {
       const id = uuidv4();
       const parts = folderPath.split(/[\\\/]/).filter(Boolean);
-      const name = displayName || parts[parts.length - 2] || parts[parts.length - 1] || 'Minecraft Saves';
+      // Use the actual folder name (last part), not parent folder (second-to-last)
+      const name = displayName || parts[parts.length - 1] || 'Minecraft Saves';
 
       queries.addSaveFolder.run(id, userUuid, folderPath, name);
 
@@ -142,9 +143,24 @@ export function registerScannerIPC() {
 
   ipcMain.handle('scanner:getInstanceMetadata', async (event, userUuid: string) => {
     try {
+      console.log('🔄 getInstanceMetadata called with UUID:', userUuid);
+
+      // Debug: check save_folders
+      const folders = queries.getSaveFolders.all(userUuid);
+      console.log(`📁 Save folders for user: ${folders.length}`, folders.map((f: any) => ({ id: f.id, path: f.folder_path })));
+
+      // Debug: check raw instance_metadata (without join)
+      const allMetadata = db.prepare('SELECT * FROM instance_metadata').all();
+      console.log(`🗄️ Total instances in database: ${allMetadata.length}`);
+
       const metadata = queries.getAllInstanceMetadata.all(userUuid);
+      console.log('✅ Retrieved instance metadata count:', metadata.length);
+      if (metadata.length > 0) {
+        console.log('📋 Instances:', metadata.map((m: any) => ({ folder_id: m.folder_id, instance_name: m.instance_name, user_uuid: m.user_uuid })));
+      }
       return { success: true, metadata };
     } catch (error: any) {
+      console.error('❌ getInstanceMetadata error:', error.message);
       return { success: false, error: error.message };
     }
   });
@@ -154,6 +170,9 @@ export function registerScannerIPC() {
       console.log('🔄 Starting scanAllFolders for user:', userUuid);
       const folders = queries.getSaveFolders.all(userUuid);
       console.log(`📁 Found ${folders.length} folders to scan`);
+      if (folders.length > 0) {
+        console.log('📋 Folders:', folders.map((f: any) => ({ id: f.id, path: f.folder_path, user_uuid: f.user_uuid })));
+      }
 
       // If no custom folders, fall back to default Minecraft saves location
       const saves = folders.length > 0
@@ -230,6 +249,7 @@ export function registerScannerIPC() {
             metadata.folder_size_mb || null,
             metadata.mods_folder_size_mb || null
           );
+          console.log(`  💾 Instance metadata saved to database with folder_id: ${metadata.folder_id}`);
         } catch (error) {
           console.error(`Error analyzing metadata for folder ${folder.id}:`, error);
         }

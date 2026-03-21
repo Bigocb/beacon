@@ -4,29 +4,25 @@ import UserMenu from '../UserMenu';
 interface GlobalHeaderProps {
   appTitle: string;
   username: string;
-  searchQuery: string;
-  onSearchChange: (query: string) => void;
   viewMode?: 'cards' | 'list';
   onViewModeToggle?: () => void;
   onScan: () => void;
-  onShowAllSaves: () => void;
   onShowFolderManager: () => void;
   onLogout: () => void;
   isLoading?: boolean;
+  showActionButtons?: boolean; // Show Scan and Manage Folders buttons
 }
 
 export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
   appTitle,
   username,
-  searchQuery,
-  onSearchChange,
   viewMode = 'cards',
   onViewModeToggle,
   onScan,
-  onShowAllSaves,
   onShowFolderManager,
   onLogout,
   isLoading = false,
+  showActionButtons = true,
 }) => {
   return (
     <div className="global-header">
@@ -35,59 +31,27 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
         <p>{username}</p>
       </div>
 
-      <div className="search-bar-container">
-        <input
-          type="text"
-          placeholder="🔍 Search saves, instances..."
-          value={searchQuery}
-          onChange={(e) => onSearchChange(e.target.value)}
-          className="search-bar"
-        />
-        {searchQuery && (
-          <button
-            className="search-clear"
-            onClick={() => onSearchChange('')}
-            title="Clear search"
-          >
-            ✕
-          </button>
-        )}
-      </div>
 
       <div className="header-right">
-        {onViewModeToggle && (
-          <button
-            className="btn-secondary"
-            onClick={onViewModeToggle}
-            title={`Switch to ${viewMode === 'cards' ? 'List' : 'Card'} view`}
-          >
-            {viewMode === 'cards' ? '📋 List View' : '🎴 Card View'}
-          </button>
+        {showActionButtons && (
+          <>
+            <button
+              className="btn-primary"
+              onClick={onScan}
+              disabled={isLoading}
+            >
+              {isLoading ? 'Scanning...' : '🔄 Scan Saves'}
+            </button>
+
+            <button
+              className="btn-secondary"
+              onClick={onShowFolderManager}
+              disabled={isLoading}
+            >
+              📁 Manage Folders
+            </button>
+          </>
         )}
-
-        <button
-          className="btn-primary"
-          onClick={onScan}
-          disabled={isLoading}
-        >
-          {isLoading ? 'Scanning...' : '🔄 Scan Saves'}
-        </button>
-
-        <button
-          className="btn-secondary"
-          onClick={onShowAllSaves}
-          disabled={isLoading}
-        >
-          📚 All Saves
-        </button>
-
-        <button
-          className="btn-secondary"
-          onClick={onShowFolderManager}
-          disabled={isLoading}
-        >
-          📁 Manage Folders
-        </button>
 
         <UserMenu />
 

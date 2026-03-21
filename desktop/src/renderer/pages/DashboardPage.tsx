@@ -89,6 +89,11 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    console.log('📊 DashboardPage useEffect triggered - UUID:', currentUser?.minecraft_uuid);
+    if (!currentUser?.minecraft_uuid) {
+      console.warn('⚠️ No UUID available, skipping load');
+      return;
+    }
     loadSaves();
     loadInstanceMetadata();
   }, [currentUser?.minecraft_uuid]);
@@ -107,15 +112,25 @@ export default function DashboardPage() {
 
   async function loadSaves() {
     try {
+      console.log('🔄 loadSaves() called with UUID:', currentUser?.minecraft_uuid);
       setLoading(true);
-      const result = await window.api.scanner.getSaves(currentUser?.minecraft_uuid);
+      const uuid = currentUser?.minecraft_uuid;
+      if (!uuid) {
+        console.warn('⚠️ UUID is undefined, cannot fetch saves');
+        return;
+      }
+      const result = await window.api.scanner.getSaves(uuid);
 
+      console.log('✅ getSaves result:', { success: result.success, savesCount: result.saves?.length || 0, error: result.error });
       if (result.success) {
         setSaves(result.saves || []);
+        console.log('📊 Saves loaded successfully:', result.saves?.length || 0, 'saves');
       } else {
+        console.error('❌ getSaves failed:', result.error);
         setError(result.error || 'Failed to load saves');
       }
     } catch (err: any) {
+      console.error('❌ Error in loadSaves:', err);
       setError(err.message || 'Error loading saves');
     } finally {
       setLoading(false);
@@ -124,12 +139,22 @@ export default function DashboardPage() {
 
   async function loadInstanceMetadata() {
     try {
-      const result = await window.api.scanner.getInstanceMetadata(currentUser?.minecraft_uuid);
+      console.log('🔄 loadInstanceMetadata() called with UUID:', currentUser?.minecraft_uuid);
+      const uuid = currentUser?.minecraft_uuid;
+      if (!uuid) {
+        console.warn('⚠️ UUID is undefined, cannot fetch instance metadata');
+        return;
+      }
+      const result = await window.api.scanner.getInstanceMetadata(uuid);
+      console.log('✅ getInstanceMetadata result:', { success: result.success, metadataCount: result.metadata?.length || 0, error: result.error });
       if (result.success) {
         setInstanceMetadata(result.metadata || []);
+        console.log('📊 Instance metadata loaded successfully:', result.metadata?.length || 0, 'instances');
+      } else {
+        console.error('❌ getInstanceMetadata failed:', result.error);
       }
     } catch (err: any) {
-      console.error('Error loading instance metadata:', err);
+      console.error('❌ Error loading instance metadata:', err);
     }
   }
 
@@ -358,15 +383,11 @@ export default function DashboardPage() {
         <GlobalHeader
           appTitle="Beacon"
           username={currentUser?.username || 'User'}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          viewMode={viewMode}
-          onViewModeToggle={() => setViewMode(viewMode === 'cards' ? 'list' : 'cards')}
           onScan={handleScanSaves}
-          onShowAllSaves={() => setShowAllSaves(true)}
           onShowFolderManager={() => setShowFolderManager(true)}
           onLogout={handleLogout}
           isLoading={loading}
+          showActionButtons={true}
         />
 
         <div className="dashboard-content">
@@ -386,15 +407,11 @@ export default function DashboardPage() {
         <GlobalHeader
           appTitle="Beacon"
           username={currentUser?.username || 'User'}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          viewMode={viewMode}
-          onViewModeToggle={() => setViewMode(viewMode === 'cards' ? 'list' : 'cards')}
           onScan={handleScanSaves}
-          onShowAllSaves={() => setShowAllSaves(true)}
           onShowFolderManager={() => setShowFolderManager(true)}
           onLogout={handleLogout}
           isLoading={loading}
+          showActionButtons={true}
         />
 
         <div className="dashboard-content">
@@ -414,15 +431,11 @@ export default function DashboardPage() {
         <GlobalHeader
           appTitle="Beacon"
           username={currentUser?.username || 'User'}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          viewMode={viewMode}
-          onViewModeToggle={() => setViewMode(viewMode === 'cards' ? 'list' : 'cards')}
           onScan={handleScanSaves}
-          onShowAllSaves={() => setShowAllSaves(true)}
           onShowFolderManager={() => setShowFolderManager(true)}
           onLogout={handleLogout}
           isLoading={loading}
+          showActionButtons={true}
         />
 
         <div className="dashboard-content">
@@ -445,15 +458,11 @@ export default function DashboardPage() {
       <GlobalHeader
         appTitle="Beacon"
         username={currentUser?.username || 'User'}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        viewMode={viewMode}
-        onViewModeToggle={() => setViewMode(viewMode === 'cards' ? 'list' : 'cards')}
         onScan={handleScanSaves}
-        onShowAllSaves={() => setShowAllSaves(true)}
         onShowFolderManager={() => setShowFolderManager(true)}
         onLogout={handleLogout}
         isLoading={loading}
+        showActionButtons={false}
       />
 
       {error && <div className="error-message">{error}</div>}
@@ -495,6 +504,65 @@ export default function DashboardPage() {
             <div className="instances-header">
               <h2>Instances {searchQuery && `(${filteredInstanceMetadata.length} matches)`}</h2>
               <div className="instances-controls">
+                {/* Search Bar */}
+                <div className="search-group">
+                  <input
+                    type="text"
+                    className="search-input"
+                    placeholder="🔍 Search instances..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    title="Search instances by name, version, or loader"
+                  />
+                  {searchQuery && (
+                    <button
+                      className="clear-search-btn"
+                      onClick={() => setSearchQuery('')}
+                      title="Clear search"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* View Mode Toggle */}
+                <div className="filter-group">
+                  <button
+                    className={`filter-btn ${viewMode === 'cards' ? 'active' : ''}`}
+                    onClick={() => setViewMode('cards')}
+                    title="Show as cards"
+                  >
+                    🎴 Cards
+                  </button>
+                  <button
+                    className={`filter-btn ${(viewMode as 'cards' | 'list') === 'list' ? 'active' : ''}`}
+                    onClick={() => setViewMode('list')}
+                    title="Show as list"
+                  >
+                    📋 List
+                  </button>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="filter-group">
+                  <button
+                    className="filter-btn"
+                    onClick={handleScanSaves}
+                    disabled={loading}
+                    title="Scan all instances for saves"
+                  >
+                    {loading ? '⟳ Scanning...' : '🔄 Scan'}
+                  </button>
+                  <button
+                    className="filter-btn"
+                    onClick={() => setShowFolderManager(true)}
+                    disabled={loading}
+                    title="Manage save folders"
+                  >
+                    📁 Manage Folders
+                  </button>
+                </div>
+
                 {/* Favorites Filter */}
                 <div className="filter-group">
                   <button
@@ -559,7 +627,8 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
-            {filteredInstanceMetadata.length > 0 ? (
+            {viewMode === 'cards' ? (
+              filteredInstanceMetadata.length > 0 ? (
               <>
                 <div className="instances-grid">
                   {filteredInstanceMetadata.map((instance) => {
@@ -703,14 +772,26 @@ export default function DashboardPage() {
                   </div>
                 )}
               </>
-            ) : (
-              <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>
-                <p style={{ fontSize: '16px', marginBottom: '8px' }}>No instances match your filters</p>
-                <p style={{ fontSize: '14px', color: '#64748b' }}>
-                  Try adjusting your search terms, filters, or loader selection
-                </p>
+              ) : (
+                <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>
+                  <p style={{ fontSize: '16px', marginBottom: '8px' }}>No instances match your filters</p>
+                  <p style={{ fontSize: '14px', color: '#64748b' }}>
+                    Try adjusting your search terms, filters, or loader selection
+                  </p>
+                </div>
+              )
+            ) : viewMode === 'list' ? (
+              <div>
+                <h3 style={{ marginTop: '24px', marginBottom: '16px', color: '#e2e8f0' }}>
+                  {searchQuery ? `Matching Saves (${filteredSaves.length})` : `All Saves (${totalSaves})`}
+                </h3>
+                <SavesByInstance
+                  saves={filteredSaves}
+                  onNavigateToAnalytics={setSelectedSaveAnalytics}
+                  loading={loading}
+                />
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       )}
@@ -778,24 +859,30 @@ export default function DashboardPage() {
             loading={loading}
           />
         </div>
-      ) : viewMode === 'list' ? (
-        <div className="dashboard-content">
-          <h2>Saves {searchQuery && `(${filteredSaves.length} matches)`}</h2>
-          <SavesByInstance
-            saves={filteredSaves}
-                onNavigateToAnalytics={setSelectedSaveAnalytics}
-            loading={loading}
-          />
-        </div>
       ) : null}
 
       {showFolderManager && currentUser?.minecraft_uuid && (
         <FolderManager
           userUuid={currentUser.minecraft_uuid}
           onClose={() => setShowFolderManager(false)}
-          onFoldersChanged={() => {
-            loadSaves();
-            loadInstanceMetadata();
+          onFoldersChanged={async () => {
+            // Automatically trigger a scan when folders are changed
+            try {
+              setLoading(true);
+              const result = await window.api.scanner.scanAllFolders(currentUser.minecraft_uuid);
+              if (result.success) {
+                await loadSaves();
+                await loadInstanceMetadata();
+                setLastScanTime(new Date());
+              }
+            } catch (err) {
+              console.error('Auto-scan failed:', err);
+              // Fallback to just reloading data
+              await loadSaves();
+              await loadInstanceMetadata();
+            } finally {
+              setLoading(false);
+            }
           }}
         />
       )}

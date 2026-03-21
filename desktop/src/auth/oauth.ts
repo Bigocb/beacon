@@ -241,7 +241,30 @@ export function registerIPC() {
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days (JWT expiry from backend)
 
       console.log('💾 Storing auth session in SQLite database...');
-      queries.saveAuth.run(userId, user.uuid, user.username, token, expiresAt.toISOString());
+      // Use explicit update logic to avoid CASCADE DELETE on REPLACE
+      try {
+        const existingRecord = db.prepare('SELECT * FROM auth WHERE id = ?').get(userId);
+        if (existingRecord) {
+          console.log(`📝 Updating existing auth entry for ${userId}`);
+          db.prepare(`
+            UPDATE auth SET
+              username = ?,
+              token = ?,
+              token_expires_at = ?,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).run(user.username, token, expiresAt.toISOString(), userId);
+        } else {
+          console.log(`➕ Inserting new auth entry for ${userId}`);
+          db.prepare(`
+            INSERT INTO auth (id, user_uuid, username, token, token_expires_at)
+            VALUES (?, ?, ?, ?, ?)
+          `).run(userId, user.uuid, user.username, token, expiresAt.toISOString());
+        }
+      } catch (dbError: any) {
+        console.error('❌ Database error saving auth:', dbError.message);
+        throw dbError;
+      }
 
       // Store in memory for quick access
       currentAuthSession = {
@@ -259,6 +282,7 @@ export function registerIPC() {
 
       return {
         success: true,
+        token,  // ✅ Return token so renderer can store it
         user: {
           uuid: user.uuid,
           username: user.username,
@@ -297,25 +321,92 @@ export function registerIPC() {
     }
   });
 
-  // Create a local single-user account (no OAuth required)
+  // Get all existing local accounts
+  ipcMain.handle('auth:getLocalAccounts', async () => {
+    try {
+      console.log('📋 [Auth] Fetching local accounts');
+
+      // Query all local accounts from auth table (those starting with "local-")
+      const accounts = db.prepare(
+        'SELECT DISTINCT username FROM auth WHERE id LIKE ? ORDER BY updated_at DESC'
+      ).all('local-%');
+
+      const usernames = accounts.map((acc: any) => acc.username);
+      console.log('✓ Found', usernames.length, 'local account(s):', usernames);
+
+      return {
+        success: true,
+        accounts: usernames,
+      };
+    } catch (error: any) {
+      console.error('❌ Error fetching local accounts:', error.message);
+      return { success: false, error: error.message, accounts: [] };
+    }
+  });
+
+  // Create or login to a local single-user account (no OAuth required)
   ipcMain.handle('auth:createLocalUser', async (event, username: string) => {
     try {
       // Import uuid for generating a unique ID
       const { v4: uuidv4 } = require('uuid');
       const jwt = require('jsonwebtoken');
 
-      const userId = uuidv4();
-      const localId = `local-${Date.now()}`;
-      const tokenExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 1 year from now
+      // ✅ FIX: Use username-based ID instead of timestamp
+      // This allows the same local account to be used across sessions
+      const localId = `local-${username.toLowerCase()}`;
 
-      console.log('📝 Creating local user account:', username);
+      // Check if this local account already exists
+      const existingAuth = db.prepare(
+        'SELECT * FROM auth WHERE id = ?'
+      ).get(localId);
+
+      let userId: string;
+      let isNewAccount = false;
+
+      if (existingAuth) {
+        // Account already exists - reuse it
+        console.log('🔄 Existing local account found for:', username);
+        userId = existingAuth.user_uuid;
+      } else {
+        // New account - generate new UUID
+        userId = uuidv4();
+        isNewAccount = true;
+        console.log('📝 Creating local user account:', username);
+      }
+
+      const tokenExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 1 year from now
 
       // Generate JWT token for local user
       const jwtSecret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
       const token = jwt.sign({ uuid: userId }, jwtSecret, { expiresIn: '365d' });
 
-      // Store in database
-      queries.saveAuth.run(localId, userId, username, token, tokenExpiresAt.toISOString());
+      // Store in database (insert or update)
+      // Use explicit update logic to avoid CASCADE DELETE on REPLACE
+      try {
+        const existingRecord = db.prepare('SELECT * FROM auth WHERE id = ?').get(localId);
+        if (existingRecord) {
+          console.log(`📝 Updating existing auth entry for ${localId} with UUID ${userId}`);
+          // UPDATE only the mutable fields, never change user_uuid to avoid UNIQUE constraint
+          db.prepare(`
+            UPDATE auth SET
+              username = ?,
+              token = ?,
+              token_expires_at = ?,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).run(username, token, tokenExpiresAt.toISOString(), localId);
+        } else {
+          console.log(`➕ Inserting new auth entry for ${localId} with UUID ${userId}`);
+          // INSERT new record
+          db.prepare(`
+            INSERT INTO auth (id, user_uuid, username, token, token_expires_at)
+            VALUES (?, ?, ?, ?, ?)
+          `).run(localId, userId, username, token, tokenExpiresAt.toISOString());
+        }
+      } catch (dbError: any) {
+        console.error('❌ Database error saving auth:', dbError.message);
+        throw dbError;
+      }
 
       // Store in memory
       currentAuthSession = {
@@ -328,7 +419,7 @@ export function registerIPC() {
         expiresAt: tokenExpiresAt,
       };
 
-      console.log('✓ Local user account created:', username);
+      console.log(isNewAccount ? '✓ Local user account created:' : '✓ Local user logged in:', username);
 
       return {
         success: true,
@@ -340,7 +431,7 @@ export function registerIPC() {
         },
       };
     } catch (error: any) {
-      console.error('❌ Error creating local user:', error.message);
+      console.error('❌ Error with local user:', error.message);
       return { success: false, error: error.message };
     }
   });
@@ -349,14 +440,14 @@ export function registerIPC() {
   ipcMain.handle('auth:logout', async () => {
     try {
       console.log('👤 [Auth] Logging out user');
-      if (currentAuthSession) {
-        queries.deleteAuth.run(currentAuthSession.uuid);
-      }
+      // ✅ FIX: Don't delete the auth record, just clear the session
+      // This allows the user to restore their session on next login
+      // The renderer will clear localStorage, which effectively logs them out
       currentAuthSession = null;
       // localStorage will be cleared by the renderer's logout function
       stopOAuthServer();
       pendingAuthCode = null;
-      console.log('✅ [Auth] User logged out successfully');
+      console.log('✅ [Auth] User logged out successfully (session cleared, auth record preserved)');
       return { success: true };
     } catch (error: any) {
       console.error('❌ [Auth] Logout error:', error.message);
