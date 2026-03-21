@@ -1,9 +1,12 @@
 import { Router, Response, Request } from 'express';
 import { randomUUID } from 'crypto';
-import pool from '../db/connection';
+import notesDb, { initializeNotesDatabase } from '../db/sqliteNotes';
 import { CreateNoteInput, UpdateNoteInput, NoteWithTags } from '../types/enrichment';
 
 const router = Router();
+
+// Initialize database on startup
+initializeNotesDatabase();
 
 // Temporary: Use a default user UUID for desktop app (will be replaced with Minecraft auth)
 const DEFAULT_USER_UUID = '00000000-0000-0000-0000-000000000000';
@@ -11,7 +14,7 @@ const DEFAULT_USER_UUID = '00000000-0000-0000-0000-000000000000';
 // ============================================
 // GET /saves/:saveId/notes - List notes for a save
 // ============================================
-router.get('/saves/:saveId/notes', async (req: Request, res: Response) => {
+router.get('/saves/:saveId/notes', (req: Request, res: Response) => {
   try {
     const { saveId } = req.params;
     const userId = DEFAULT_USER_UUID;
@@ -21,25 +24,30 @@ router.get('/saves/:saveId/notes', async (req: Request, res: Response) => {
     console.log('   userId:', userId);
     console.log('⚠️  [Backend] Note: Desktop saves are loaded locally, not synced to DB. Fetching notes directly by saveId...');
 
-    // Get notes with tags (no save ownership check needed for local saves)
+    // Get notes (no save ownership check needed for local saves)
     console.log('📚 [Backend] Fetching notes from database...');
-    const notesResult = await pool.query(
-      `SELECT n.*,
-              json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color)) FILTER (WHERE t.id IS NOT NULL) as tags
-       FROM notes n
-       LEFT JOIN note_tags nt ON n.id = nt.note_id
-       LEFT JOIN tags t ON nt.tag_id = t.id
-       WHERE n.save_id = $1 AND n.deleted_at IS NULL
-       GROUP BY n.id
+    const notesResult = notesDb.query(
+      `SELECT n.* FROM notes n
+       WHERE n.save_id = ? AND n.deleted_at IS NULL
        ORDER BY n.timestamp DESC`,
       [saveId]
     );
 
     console.log('✅ [Backend] Found', notesResult.rows.length, 'notes');
-    const notes = notesResult.rows.map(row => ({
-      ...row,
-      tags: row.tags || [],
-    }));
+
+    // For each note, fetch its tags
+    const notes = notesResult.rows.map(note => {
+      const tagsResult = notesDb.query(
+        `SELECT t.* FROM tags t
+         JOIN note_tags nt ON t.id = nt.tag_id
+         WHERE nt.note_id = ?`,
+        [note.id]
+      );
+      return {
+        ...note,
+        tags: tagsResult.rows || [],
+      };
+    });
 
     console.log('📤 [Backend] Returning notes response');
     res.json({ notes });
@@ -52,7 +60,7 @@ router.get('/saves/:saveId/notes', async (req: Request, res: Response) => {
 // ============================================
 // GET /notes/:noteId - Get single note
 // ============================================
-router.get('/notes/:noteId', async (req: Request, res: Response) => {
+router.get('/notes/:noteId', (req: Request, res: Response) => {
   try {
     const { noteId } = req.params;
     const userId = DEFAULT_USER_UUID;
@@ -63,8 +71,8 @@ router.get('/notes/:noteId', async (req: Request, res: Response) => {
 
     // Fetch note (no ownership check needed for desktop app)
     console.log('🔍 [Backend] Fetching note...');
-    const noteResult = await pool.query(
-      `SELECT n.* FROM notes n WHERE n.id = $1 AND n.deleted_at IS NULL`,
+    const noteResult = notesDb.query(
+      `SELECT n.* FROM notes n WHERE n.id = ? AND n.deleted_at IS NULL`,
       [noteId]
     );
 
@@ -77,10 +85,10 @@ router.get('/notes/:noteId', async (req: Request, res: Response) => {
 
     // Get tags
     console.log('🏷️  [Backend] Fetching tags for note...');
-    const tagsResult = await pool.query(
+    const tagsResult = notesDb.query(
       `SELECT t.* FROM tags t
        JOIN note_tags nt ON t.id = nt.tag_id
-       WHERE nt.note_id = $1`,
+       WHERE nt.note_id = ?`,
       [noteId]
     );
 
@@ -101,7 +109,7 @@ router.get('/notes/:noteId', async (req: Request, res: Response) => {
 // ============================================
 // POST /saves/:saveId/notes - Create note
 // ============================================
-router.post('/saves/:saveId/notes', async (req: Request, res: Response) => {
+router.post('/saves/:saveId/notes', (req: Request, res: Response) => {
   try {
     const { saveId } = req.params;
     const userId = DEFAULT_USER_UUID;
@@ -120,36 +128,39 @@ router.post('/saves/:saveId/notes', async (req: Request, res: Response) => {
     console.log('⚠️  [Backend] Note: Skipping save ownership check (local saves not synced to DB)');
 
     const noteId = randomUUID();
-    const now = new Date();
+    const now = new Date().toISOString();
 
-    // Create note
+    // Create note and add tags in a transaction
     console.log('💾 [Backend] Inserting note into database...');
-    await pool.query(
-      `INSERT INTO notes (id, save_id, title, content, note_type, timestamp, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [noteId, saveId, title || null, content, note_type, timestamp || now, now, now]
-    );
-    console.log('✅ [Backend] Note inserted with id:', noteId);
-
-    // Add tags
-    if (tag_ids && tag_ids.length > 0) {
-      const tagValuesQuery = tag_ids.map((_, i) => `($1, $${i + 2})`).join(',');
-      await pool.query(
-        `INSERT INTO note_tags (note_id, tag_id) VALUES ${tagValuesQuery}`,
-        [noteId, ...tag_ids]
+    notesDb.transaction(() => {
+      notesDb.run(
+        `INSERT INTO notes (id, save_id, title, content, note_type, timestamp, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [noteId, saveId, title || null, content, note_type, timestamp || now, now, now]
       );
-    }
+      console.log('✅ [Backend] Note inserted with id:', noteId);
+
+      // Add tags
+      if (tag_ids && tag_ids.length > 0) {
+        for (const tagId of tag_ids) {
+          notesDb.run(
+            `INSERT INTO note_tags (note_id, tag_id) VALUES (?, ?)`,
+            [noteId, tagId]
+          );
+        }
+      }
+    });
 
     // Get created note with tags
-    const noteResult = await pool.query(
-      `SELECT * FROM notes WHERE id = $1`,
+    const noteResult = notesDb.query(
+      `SELECT * FROM notes WHERE id = ?`,
       [noteId]
     );
 
-    const tagsResult = await pool.query(
+    const tagsResult = notesDb.query(
       `SELECT t.* FROM tags t
        JOIN note_tags nt ON t.id = nt.tag_id
-       WHERE nt.note_id = $1`,
+       WHERE nt.note_id = ?`,
       [noteId]
     );
 
@@ -168,7 +179,7 @@ router.post('/saves/:saveId/notes', async (req: Request, res: Response) => {
 // ============================================
 // PATCH /notes/:noteId - Update note
 // ============================================
-router.patch('/notes/:noteId', async (req: Request, res: Response) => {
+router.patch('/notes/:noteId', (req: Request, res: Response) => {
   try {
     const { noteId } = req.params;
     const userId = DEFAULT_USER_UUID;
@@ -181,8 +192,8 @@ router.patch('/notes/:noteId', async (req: Request, res: Response) => {
 
     // Verify note exists (no ownership check needed for desktop app)
     console.log('🔍 [Backend] Verifying note exists...');
-    const noteResult = await pool.query(
-      `SELECT n.* FROM notes n WHERE n.id = $1 AND n.deleted_at IS NULL`,
+    const noteResult = notesDb.query(
+      `SELECT n.* FROM notes n WHERE n.id = ? AND n.deleted_at IS NULL`,
       [noteId]
     );
 
@@ -193,72 +204,73 @@ router.patch('/notes/:noteId', async (req: Request, res: Response) => {
 
     console.log('✅ [Backend] Note found');
 
-    const now = new Date();
-    const updates: string[] = [];
-    const values: any[] = [noteId, now];
-    let paramIndex = 3;
+    const now = new Date().toISOString();
 
-    if (title !== undefined) {
-      updates.push(`title = $${paramIndex}`);
-      values.push(title);
-      paramIndex++;
-    }
-    if (content !== undefined) {
-      updates.push(`content = $${paramIndex}`);
-      values.push(content);
-      paramIndex++;
-    }
-    if (note_type !== undefined) {
-      updates.push(`note_type = $${paramIndex}`);
-      values.push(note_type);
-      paramIndex++;
-    }
-    if (timestamp !== undefined) {
-      updates.push(`timestamp = $${paramIndex}`);
-      values.push(timestamp);
-      paramIndex++;
-    }
+    // Update note and tags in a transaction
+    notesDb.transaction(() => {
+      const updates: string[] = ['updated_at = ?'];
+      const values: any[] = [now];
 
-    if (updates.length > 0) {
-      updates.push('updated_at = $2');
-      console.log('💾 [Backend] Updating note fields...');
-      await pool.query(
-        `UPDATE notes SET ${updates.join(', ')} WHERE id = $1`,
-        values
-      );
-      console.log('✅ [Backend] Note fields updated');
-    }
-
-    // Update tags
-    if (tag_ids) {
-      console.log('🏷️  [Backend] Updating tags...');
-      // Delete existing tags
-      await pool.query('DELETE FROM note_tags WHERE note_id = $1', [noteId]);
-      console.log('   Deleted existing tags');
-
-      // Add new tags
-      if (tag_ids.length > 0) {
-        const tagValuesQuery = tag_ids.map((_, i) => `($1, $${i + 2})`).join(',');
-        await pool.query(
-          `INSERT INTO note_tags (note_id, tag_id) VALUES ${tagValuesQuery}`,
-          [noteId, ...tag_ids]
-        );
-        console.log('   Inserted', tag_ids.length, 'new tags');
+      if (title !== undefined) {
+        updates.push('title = ?');
+        values.push(title);
       }
-    }
+      if (content !== undefined) {
+        updates.push('content = ?');
+        values.push(content);
+      }
+      if (note_type !== undefined) {
+        updates.push('note_type = ?');
+        values.push(note_type);
+      }
+      if (timestamp !== undefined) {
+        updates.push('timestamp = ?');
+        values.push(timestamp);
+      }
+
+      values.push(noteId);
+
+      if (updates.length > 1) {
+        console.log('💾 [Backend] Updating note fields...');
+        notesDb.run(
+          `UPDATE notes SET ${updates.join(', ')} WHERE id = ?`,
+          values
+        );
+        console.log('✅ [Backend] Note fields updated');
+      }
+
+      // Update tags
+      if (tag_ids !== undefined) {
+        console.log('🏷️  [Backend] Updating tags...');
+        // Delete existing tags
+        notesDb.run('DELETE FROM note_tags WHERE note_id = ?', [noteId]);
+        console.log('   Deleted existing tags');
+
+        // Add new tags
+        if (tag_ids.length > 0) {
+          for (const tagId of tag_ids) {
+            notesDb.run(
+              `INSERT INTO note_tags (note_id, tag_id) VALUES (?, ?)`,
+              [noteId, tagId]
+            );
+          }
+          console.log('   Inserted', tag_ids.length, 'new tags');
+        }
+      }
+    });
 
     // Get updated note
     console.log('📚 [Backend] Fetching updated note from database...');
-    const updatedNote = await pool.query(
-      `SELECT * FROM notes WHERE id = $1`,
+    const updatedNote = notesDb.query(
+      `SELECT * FROM notes WHERE id = ?`,
       [noteId]
     );
 
     console.log('🏷️  [Backend] Fetching updated tags...');
-    const tagsResult = await pool.query(
+    const tagsResult = notesDb.query(
       `SELECT t.* FROM tags t
        JOIN note_tags nt ON t.id = nt.tag_id
-       WHERE nt.note_id = $1`,
+       WHERE nt.note_id = ?`,
       [noteId]
     );
 
@@ -279,7 +291,7 @@ router.patch('/notes/:noteId', async (req: Request, res: Response) => {
 // ============================================
 // DELETE /notes/:noteId - Soft delete note
 // ============================================
-router.delete('/notes/:noteId', async (req: Request, res: Response) => {
+router.delete('/notes/:noteId', (req: Request, res: Response) => {
   try {
     const { noteId } = req.params;
     const userId = DEFAULT_USER_UUID;
@@ -290,8 +302,8 @@ router.delete('/notes/:noteId', async (req: Request, res: Response) => {
 
     // Verify note exists (no ownership check needed for desktop app)
     console.log('🔍 [Backend] Verifying note exists...');
-    const noteResult = await pool.query(
-      `SELECT n.* FROM notes n WHERE n.id = $1 AND n.deleted_at IS NULL`,
+    const noteResult = notesDb.query(
+      `SELECT n.* FROM notes n WHERE n.id = ? AND n.deleted_at IS NULL`,
       [noteId]
     );
 
@@ -303,9 +315,10 @@ router.delete('/notes/:noteId', async (req: Request, res: Response) => {
     console.log('✅ [Backend] Note found, soft deleting...');
 
     // Soft delete
-    await pool.query(
-      'UPDATE notes SET deleted_at = $1 WHERE id = $2',
-      [new Date(), noteId]
+    const now = new Date().toISOString();
+    notesDb.run(
+      'UPDATE notes SET deleted_at = ? WHERE id = ?',
+      [now, noteId]
     );
 
     console.log('✅ [Backend] Note soft deleted successfully');
@@ -319,7 +332,7 @@ router.delete('/notes/:noteId', async (req: Request, res: Response) => {
 // ============================================
 // POST /notes/:noteId/tags/:tagId - Add tag to note
 // ============================================
-router.post('/notes/:noteId/tags/:tagId', async (req: Request, res: Response) => {
+router.post('/notes/:noteId/tags/:tagId', (req: Request, res: Response) => {
   try {
     const { noteId, tagId } = req.params;
     const userId = DEFAULT_USER_UUID;
@@ -331,8 +344,8 @@ router.post('/notes/:noteId/tags/:tagId', async (req: Request, res: Response) =>
 
     // Verify note exists (no ownership check needed for desktop app)
     console.log('🔍 [Backend] Verifying note exists...');
-    const noteResult = await pool.query(
-      `SELECT n.* FROM notes n WHERE n.id = $1`,
+    const noteResult = notesDb.query(
+      `SELECT n.* FROM notes n WHERE n.id = ?`,
       [noteId]
     );
 
@@ -343,12 +356,15 @@ router.post('/notes/:noteId/tags/:tagId', async (req: Request, res: Response) =>
 
     console.log('✅ [Backend] Note found, adding tag...');
 
-    // Insert tag relationship
-    await pool.query(
-      `INSERT INTO note_tags (note_id, tag_id) VALUES ($1, $2)
-       ON CONFLICT DO NOTHING`,
-      [noteId, tagId]
-    );
+    // Insert tag relationship (SQLite will ignore if it already exists)
+    try {
+      notesDb.run(
+        `INSERT INTO note_tags (note_id, tag_id) VALUES (?, ?)`,
+        [noteId, tagId]
+      );
+    } catch (e) {
+      // Ignore constraint violations (tag already exists)
+    }
 
     console.log('✅ [Backend] Tag added to note');
     res.json({ success: true });
@@ -361,7 +377,7 @@ router.post('/notes/:noteId/tags/:tagId', async (req: Request, res: Response) =>
 // ============================================
 // DELETE /notes/:noteId/tags/:tagId - Remove tag from note
 // ============================================
-router.delete('/notes/:noteId/tags/:tagId', async (req: Request, res: Response) => {
+router.delete('/notes/:noteId/tags/:tagId', (req: Request, res: Response) => {
   try {
     const { noteId, tagId } = req.params;
     const userId = DEFAULT_USER_UUID;
@@ -373,8 +389,8 @@ router.delete('/notes/:noteId/tags/:tagId', async (req: Request, res: Response) 
 
     // Verify note exists (no ownership check needed for desktop app)
     console.log('🔍 [Backend] Verifying note exists...');
-    const noteResult = await pool.query(
-      `SELECT n.* FROM notes n WHERE n.id = $1`,
+    const noteResult = notesDb.query(
+      `SELECT n.* FROM notes n WHERE n.id = ?`,
       [noteId]
     );
 
@@ -386,8 +402,8 @@ router.delete('/notes/:noteId/tags/:tagId', async (req: Request, res: Response) 
     console.log('✅ [Backend] Note found, removing tag...');
 
     // Delete tag relationship
-    await pool.query(
-      'DELETE FROM note_tags WHERE note_id = $1 AND tag_id = $2',
+    notesDb.run(
+      'DELETE FROM note_tags WHERE note_id = ? AND tag_id = ?',
       [noteId, tagId]
     );
 
