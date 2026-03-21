@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron';
+import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
 import { scanMinecraftSaves, scanMinecraftSavesFromFolders, scanFolder, Save } from './index';
@@ -83,10 +84,13 @@ export function registerScannerIPC() {
 
   ipcMain.handle('scanner:getSaves', async (event, userUuid: string) => {
     try {
-      const saves = queries.getAllSaves.all(userUuid);
-      return { success: true, saves };
+      // Fetch from backend API instead of local database
+      const response = await axios.get(`http://localhost:3000/api/saves?user_uuid=${userUuid}`);
+      return { success: true, saves: response.data.saves || [], savesCount: response.data.saves?.length || 0 };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      console.error('Error fetching saves from backend:', error.message);
+      // Fallback to empty array if backend is unavailable
+      return { success: false, savesCount: 0, error: error.message };
     }
   });
 
@@ -145,30 +149,26 @@ export function registerScannerIPC() {
     try {
       console.log('🔄 getInstanceMetadata called with UUID:', userUuid);
 
-      // Debug: check save_folders
-      const folders = queries.getSaveFolders.all(userUuid);
-      console.log(`📁 Save folders for user: ${folders.length}`, folders.map((f: any) => ({ id: f.id, path: f.folder_path })));
-
-      // Debug: check raw instance_metadata (without join)
-      const allMetadata = db.prepare('SELECT * FROM instance_metadata').all();
-      console.log(`🗄️ Total instances in database: ${allMetadata.length}`);
-
-      const metadata = queries.getAllInstanceMetadata.all(userUuid);
+      // Fetch from backend API instead of local database
+      const response = await axios.get(`http://localhost:3000/api/instances?user_uuid=${userUuid}`);
+      const metadata = response.data.instances || [];
       console.log('✅ Retrieved instance metadata count:', metadata.length);
       if (metadata.length > 0) {
         console.log('📋 Instances:', metadata.map((m: any) => ({ folder_id: m.folder_id, instance_name: m.instance_name, user_uuid: m.user_uuid })));
       }
-      return { success: true, metadata };
+      return { success: true, metadata, metadataCount: metadata.length };
     } catch (error: any) {
       console.error('❌ getInstanceMetadata error:', error.message);
-      return { success: false, error: error.message };
+      return { success: false, metadataCount: 0, error: error.message };
     }
   });
 
   ipcMain.handle('scanner:scanAllFolders', async (event, userUuid: string) => {
     try {
       console.log('🔄 Starting scanAllFolders for user:', userUuid);
-      const folders = queries.getSaveFolders.all(userUuid);
+      // Fetch folders from backend API
+      const foldersResponse = await axios.get(`http://localhost:3000/api/save-folders?user_uuid=${userUuid}`);
+      const folders = foldersResponse.data.folders || [];
       console.log(`📁 Found ${folders.length} folders to scan`);
       if (folders.length > 0) {
         console.log('📋 Folders:', folders.map((f: any) => ({ id: f.id, path: f.folder_path, user_uuid: f.user_uuid })));
