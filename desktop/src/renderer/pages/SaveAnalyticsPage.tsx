@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { PlayerData } from '../../scanner/player-parser';
 import PlayerInfoTab from '../components/PlayerInfoTab';
 import { NoteList, NoteEditor, Timeline, WorldMetadataEditor, AdvancementsTab } from '../components/shared';
@@ -756,7 +756,7 @@ export const SaveAnalyticsPage: React.FC<SaveAnalyticsPageProps> = ({ saveData, 
   }, [saveData?.id, activeTab, notes]);
 
   // Manual refresh function for player data
-  const handleRefreshPlayerData = async () => {
+  const handleRefreshPlayerData = useCallback(async () => {
     const savePath = saveData?.file_path || saveData?.path;
     if (!selectedPlayerUUID || !savePath) {
       console.warn('❌ Missing UUID or savePath for refresh');
@@ -777,7 +777,7 @@ export const SaveAnalyticsPage: React.FC<SaveAnalyticsPageProps> = ({ saveData, 
     } finally {
       setLoadingPlayerData(false);
     }
-  };
+  }, [saveData?.file_path, saveData?.path, selectedPlayerUUID]);
 
   // Debug logging
   console.log('🎮 SaveAnalyticsPage rendering with data:', {
@@ -815,7 +815,7 @@ export const SaveAnalyticsPage: React.FC<SaveAnalyticsPageProps> = ({ saveData, 
 
   // Normalize data to handle both camelCase and snake_case formats
   // Merge with real statistics data when available
-  const data = {
+  const data = useMemo(() => ({
     name: saveData.name || saveData.world_name || 'Unknown',
     gameMode: saveData.gameMode || saveData.game_mode || 'unknown',
     gameVersion: saveData.gameVersion || saveData.version || 'Unknown',
@@ -865,15 +865,21 @@ export const SaveAnalyticsPage: React.FC<SaveAnalyticsPageProps> = ({ saveData, 
     effects: Array.isArray(saveData.effects) ? saveData.effects : [],
     foodEaten: statisticsData?.foodEaten ?? (saveData.foodEaten || saveData.food_eaten || 0),
     bedsSleptIn: statisticsData?.bedsSleptIn ?? (saveData.bedsSleptIn || saveData.beds_slept_in || 0),
-  };
+  }), [saveData, statisticsData, advancementData, explorationData, playerData, selectedPlayer]);
 
-  const advancementsPercent = Math.round((data.advancementsCompleted / data.advancementsTotal) * 100);
+  const advancementsPercent = useMemo(() =>
+    Math.round((data.advancementsCompleted / data.advancementsTotal) * 100),
+    [data.advancementsCompleted, data.advancementsTotal]
+  );
 
   // Compute additional analytics metrics
   // Calculate actual days played (playtime is in seconds, 1 game day = 1200 seconds at 20 ticks/sec)
-  const daysPlayed = Math.max(data.playtime / 1200, 0.01); // Use game days, minimum 0.01 to avoid division by zero
+  const daysPlayed = useMemo(() =>
+    Math.max(data.playtime / 1200, 0.01),
+    [data.playtime]
+  );
 
-  const computedMetrics = {
+  const computedMetrics = useMemo(() => ({
     // Efficiency metrics
     miningRatio: data.blocksMined > 0 ? ((data.blocksPlaced / data.blocksMined) * 100).toFixed(1) : '0',
     miningEfficiency: data.blocksMined > 0 ? (data.blocksMined / Math.max(data.totalDistance / 100, 1)).toFixed(2) : '0', // blocks mined per 100 blocks traveled
@@ -896,7 +902,7 @@ export const SaveAnalyticsPage: React.FC<SaveAnalyticsPageProps> = ({ saveData, 
     // Playstyle metrics
     isCreativeMode: data.gameMode.toLowerCase() === 'creative',
     isSurvivalMode: data.gameMode.toLowerCase() === 'survival',
-  };
+  }), [data, daysPlayed]);
 
   console.log('🎮 SaveAnalyticsPage data normalized successfully, activeTab:', activeTab, 'Metrics:', computedMetrics);
 
@@ -915,6 +921,11 @@ export const SaveAnalyticsPage: React.FC<SaveAnalyticsPageProps> = ({ saveData, 
   // Player controls for header
   const playerControls = (
     <div className="save-analytics-player-controls">
+      {playerUUIDs.length === 1 && (
+        <div className="save-analytics-player-display">
+          <span>👤 Player: <strong>{playerNames[playerUUIDs[0]] || playerUUIDs[0].substring(0, 8) + '...'}</strong></span>
+        </div>
+      )}
       {playerUUIDs.length > 1 && (
         <div className="save-analytics-player-selector">
           <label htmlFor="main-player-select">👤 Player:</label>
@@ -1363,8 +1374,8 @@ export const SaveAnalyticsPage: React.FC<SaveAnalyticsPageProps> = ({ saveData, 
                   {playerData?.armor && playerData.armor.length > 0 ? (
                     <div className="save-analytics-item-list">
                       <div className="armor-display">
-                        {playerData.armor.map((armorItem, idx) => (
-                          <div key={idx} className="armor-slot">
+                        {playerData.armor.map((armorItem) => (
+                          <div key={`${armorItem.slot}-${armorItem.id}`} className="armor-slot">
                             <span className="armor-label">
                               {armorItem.slot === 'head' ? '🧢 Helmet' : armorItem.slot === 'chest' ? '👕 Chestplate' : armorItem.slot === 'legs' ? '👖 Leggings' : '👞 Boots'}
                             </span>
@@ -1385,7 +1396,7 @@ export const SaveAnalyticsPage: React.FC<SaveAnalyticsPageProps> = ({ saveData, 
                   {playerData?.inventory && playerData.inventory.length > 0 ? (
                     <div className="save-analytics-item-list">
                       {playerData.inventory.slice(0, 36).map((item, idx) => (
-                        <div key={idx} className="save-analytics-item">
+                        <div key={`inv-${idx}-${item.id}`} className="save-analytics-item">
                           <span className="save-analytics-item-name">
                             {item.id.replace('minecraft:', '').replace(/_/g, ' ')} {item.count > 1 ? `×${item.count}` : ''}
                           </span>
