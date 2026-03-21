@@ -119,7 +119,8 @@ export default function DashboardPage() {
         console.warn('⚠️ UUID is undefined, cannot fetch saves');
         return;
       }
-      const result = await window.api.scanner.getSaves(uuid);
+      const token = localStorage.getItem('minecraft_tracker_auth_token');
+      const result = await window.api.scanner.getSaves(uuid, token);
 
       console.log('✅ getSaves result:', { success: result.success, savesCount: result.saves?.length || 0, error: result.error });
       if (result.success) {
@@ -145,7 +146,8 @@ export default function DashboardPage() {
         console.warn('⚠️ UUID is undefined, cannot fetch instance metadata');
         return;
       }
-      const result = await window.api.scanner.getInstanceMetadata(uuid);
+      const token = localStorage.getItem('minecraft_tracker_auth_token');
+      const result = await window.api.scanner.getInstanceMetadata(uuid, token);
       console.log('✅ getInstanceMetadata result:', { success: result.success, metadataCount: result.metadata?.length || 0, error: result.error });
       if (result.success) {
         setInstanceMetadata(result.metadata || []);

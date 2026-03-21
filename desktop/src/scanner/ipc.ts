@@ -82,10 +82,14 @@ export function registerScannerIPC() {
     }
   });
 
-  ipcMain.handle('scanner:getSaves', async (event, userUuid: string) => {
+  ipcMain.handle('scanner:getSaves', async (event, userUuid: string, token?: string) => {
     try {
       // Fetch from backend API instead of local database
-      const response = await axios.get(`http://localhost:3000/api/saves?user_uuid=${userUuid}`);
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const response = await axios.get(`http://localhost:3000/api/saves`, {
+        headers,
+        params: { user_uuid: userUuid }
+      });
       return { success: true, saves: response.data.saves || [], savesCount: response.data.saves?.length || 0 };
     } catch (error: any) {
       console.error('Error fetching saves from backend:', error.message);
@@ -145,12 +149,16 @@ export function registerScannerIPC() {
     }
   });
 
-  ipcMain.handle('scanner:getInstanceMetadata', async (event, userUuid: string) => {
+  ipcMain.handle('scanner:getInstanceMetadata', async (event, userUuid: string, token?: string) => {
     try {
       console.log('🔄 getInstanceMetadata called with UUID:', userUuid);
 
       // Fetch from backend API instead of local database
-      const response = await axios.get(`http://localhost:3000/api/instances?user_uuid=${userUuid}`);
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const response = await axios.get(`http://localhost:3000/api/instances`, {
+        headers,
+        params: { user_uuid: userUuid }
+      });
       const metadata = response.data.instances || [];
       console.log('✅ Retrieved instance metadata count:', metadata.length);
       if (metadata.length > 0) {
