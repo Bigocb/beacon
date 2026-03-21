@@ -48,11 +48,20 @@ async function createWindow() {
 }
 
 app.on('ready', async () => {
-  // Initialize SQLite database
-  initializeDatabase();
+  // Initialize SQLite database (gracefully handle failures)
+  try {
+    initializeDatabase();
+  } catch (error) {
+    console.error('Failed to initialize database:', error);
+    // Continue anyway - app can work without local DB if needed
+  }
 
   // Restore user auth from database (for app restart persistence)
-  restoreAuthFromDatabase();
+  try {
+    restoreAuthFromDatabase();
+  } catch (error) {
+    console.error('Failed to restore auth:', error);
+  }
 
   // Register IPC handlers
   registerAuthIPC();

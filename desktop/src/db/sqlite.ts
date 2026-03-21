@@ -11,15 +11,31 @@ if (!fs.existsSync(trackerDir)) {
 }
 
 const dbPath = path.join(trackerDir, 'saves.db');
-const db: any = new Database(dbPath);
+let db: any = null;
 
-// Enable foreign keys
-db.pragma('foreign_keys = ON');
+// Lazy initialize database
+function getDb() {
+  if (!db) {
+    try {
+      db = new Database(dbPath);
+    } catch (error) {
+      console.error('Failed to initialize SQLite database:', error);
+      return null;
+    }
+  }
+  return db;
+}
 
 // Initialize schema
 function initializeSchema() {
+  const database = getDb();
+  if (!database) return;
+
   try {
-    db.exec(`
+    // Enable foreign keys
+    database.pragma('foreign_keys = ON');
+
+    database.exec(`
     CREATE TABLE IF NOT EXISTS saves (
       id TEXT PRIMARY KEY,
       user_uuid TEXT NOT NULL,
@@ -125,7 +141,9 @@ function initializeSchema() {
 function runMigrations() {
   try {
     // Check and add missing columns to instance_metadata table
-    const instanceTableInfo = db.prepare("PRAGMA table_info(instance_metadata)").all();
+    const database = getDb();
+    if (!database) return;
+    const instanceTableInfo = database.prepare("PRAGMA table_info(instance_metadata)").all();
     const instanceColumnNames = instanceTableInfo.map((col: any) => col.name);
 
     const instanceRequiredColumns = {
@@ -139,12 +157,12 @@ function runMigrations() {
     for (const [columnName, columnType] of Object.entries(instanceRequiredColumns)) {
       if (!instanceColumnNames.includes(columnName)) {
         console.log(`Adding column ${columnName} to instance_metadata`);
-        db.exec(`ALTER TABLE instance_metadata ADD COLUMN ${columnName} ${columnType}`);
+        database.exec(`ALTER TABLE instance_metadata ADD COLUMN ${columnName} ${columnType}`);
       }
     }
 
     // Check and add missing columns to saves table for player data
-    const savesTableInfo = db.prepare("PRAGMA table_info(saves)").all();
+    const savesTableInfo = database.prepare("PRAGMA table_info(saves)").all();
     const savesColumnNames = savesTableInfo.map((col: any) => col.name);
 
     const savesRequiredColumns = {
@@ -165,7 +183,7 @@ function runMigrations() {
     for (const [columnName, columnType] of Object.entries(savesRequiredColumns)) {
       if (!savesColumnNames.includes(columnName)) {
         console.log(`Adding column ${columnName} to saves`);
-        db.exec(`ALTER TABLE saves ADD COLUMN ${columnName} ${columnType}`);
+        if (database) database.exec(`ALTER TABLE saves ADD COLUMN ${columnName} ${columnType}`);
       }
     }
   } catch (error) {
@@ -173,28 +191,33 @@ function runMigrations() {
   }
 }
 
-// Call initialization immediately when module loads
-initializeSchema();
-runMigrations();
-
-// Export for main.ts to ensure it's called
+// Lazy initialization - will be called when needed
 export function initializeDatabase() {
-  // Already initialized above, but exported for consistency
+  initializeSchema();
+  runMigrations();
 }
 
 // Prepare queries
-export const queries: any = {
+let queriesCache: any = null;
+
+function getQueries() {
+  if (queriesCache) return queriesCache;
+
+  const database = getDb();
+  if (!database) return null;
+
+  queriesCache = {
   // Saves
-  getAllSaves: db.prepare(`
+  getAllSaves: database.prepare(`
     SELECT s.*, sf.display_name as folder_name FROM saves s
     LEFT JOIN save_folders sf ON s.folder_id = sf.id
     WHERE s.user_uuid = ? AND s.status != 'deleted'
     ORDER BY s.last_played DESC
   `),
 
-  getSaveById: db.prepare('SELECT * FROM saves WHERE id = ?'),
+  getSaveById: database.prepare('SELECT * FROM saves WHERE id = ?'),
 
-  insertSave: db.prepare(`
+  insertSave: database.prepare(`
     INSERT INTO saves (
       id, user_uuid, folder_id, world_name, file_path, version, game_mode,
       difficulty, seed, play_time_ticks, spawn_x, spawn_y, spawn_z,
@@ -203,7 +226,7 @@ export const queries: any = {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `),
 
-  updateSave: db.prepare(`
+  updateSave: database.prepare(`
     UPDATE saves SET
       notes = COALESCE(?, notes),
       status = COALESCE(?, status),
@@ -212,7 +235,7 @@ export const queries: any = {
     WHERE id = ?
   `),
 
-  updateSaveMetadata: db.prepare(`
+  updateSaveMetadata: database.prepare(`
     UPDATE saves SET
       version = ?,
       game_mode = ?,
@@ -227,36 +250,36 @@ export const queries: any = {
   `),
 
   // Sync queue
-  getQueuedChanges: db.prepare(`
+  getQueuedChanges: database.prepare(`
     SELECT * FROM sync_queue ORDER BY created_at ASC
   `),
 
-  addToQueue: db.prepare(`
+  addToQueue: database.prepare(`
     INSERT INTO sync_queue (id, save_id, operation, data)
     VALUES (?, ?, ?, ?)
   `),
 
-  clearQueue: db.prepare('DELETE FROM sync_queue'),
+  clearQueue: database.prepare('DELETE FROM sync_queue'),
 
-  deleteFromQueue: db.prepare('DELETE FROM sync_queue WHERE id = ?'),
+  deleteFromQueue: database.prepare('DELETE FROM sync_queue WHERE id = ?'),
 
   // Backups
-  getBackups: db.prepare(`
+  getBackups: database.prepare(`
     SELECT * FROM backups WHERE save_id = ?
     ORDER BY version DESC
   `),
 
-  createBackup: db.prepare(`
+  createBackup: database.prepare(`
     INSERT INTO backups (id, save_id, version, file_path, size_mb, backup_type)
     VALUES (?, ?, ?, ?, ?, ?)
   `),
 
   // Auth
   // Check if auth exists to avoid CASCADE DELETE on REPLACE
-  getAuthById: db.prepare('SELECT * FROM auth WHERE id = ?'),
+  getAuthById: database.prepare('SELECT * FROM auth WHERE id = ?'),
 
   // Update existing auth entry
-  updateAuth: db.prepare(`
+  updateAuth: database.prepare(`
     UPDATE auth SET
       user_uuid = ?,
       username = ?,
@@ -267,12 +290,12 @@ export const queries: any = {
   `),
 
   // Insert new auth entry
-  insertAuth: db.prepare(`
+  insertAuth: database.prepare(`
     INSERT INTO auth (id, user_uuid, username, token, token_expires_at)
     VALUES (?, ?, ?, ?, ?)
   `),
 
-  saveAuth: db.prepare(`
+  saveAuth: database.prepare(`
     INSERT INTO auth (id, user_uuid, username, token, token_expires_at)
     VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
@@ -282,43 +305,77 @@ export const queries: any = {
       updated_at = CURRENT_TIMESTAMP
   `),
 
-  getAuth: db.prepare('SELECT * FROM auth WHERE user_uuid = ?'),
+  getAuth: database.prepare('SELECT * FROM auth WHERE user_uuid = ?'),
 
-  deleteAuth: db.prepare('DELETE FROM auth WHERE user_uuid = ?'),
+  deleteAuth: database.prepare('DELETE FROM auth WHERE user_uuid = ?'),
 
   // Save Folders
-  getSaveFolders: db.prepare(`
+  getSaveFolders: database.prepare(`
     SELECT * FROM save_folders WHERE user_uuid = ?
     ORDER BY created_at ASC
   `),
 
-  addSaveFolder: db.prepare(`
+  addSaveFolder: database.prepare(`
     INSERT INTO save_folders (id, user_uuid, folder_path, display_name)
     VALUES (?, ?, ?, ?)
   `),
 
-  removeSaveFolder: db.prepare(`
+  removeSaveFolder: database.prepare(`
     DELETE FROM save_folders WHERE id = ? AND user_uuid = ?
   `),
 
-  getSaveFolderById: db.prepare('SELECT * FROM save_folders WHERE id = ?'),
+  getSaveFolderById: database.prepare('SELECT * FROM save_folders WHERE id = ?'),
 
   // Instance Metadata
-  getInstanceMetadata: db.prepare(`
+  getInstanceMetadata: database.prepare(`
     SELECT * FROM instance_metadata WHERE folder_id = ?
   `),
 
-  saveInstanceMetadata: db.prepare(`
+  saveInstanceMetadata: database.prepare(`
     INSERT OR REPLACE INTO instance_metadata (
       folder_id, mod_loader, loader_version, game_version, mod_count, icon_path, instance_type, launcher, instance_name, folder_size_mb, mods_folder_size_mb
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `),
 
-  getAllInstanceMetadata: db.prepare(`
+  getAllInstanceMetadata: database.prepare(`
     SELECT im.*, sf.display_name, sf.folder_path, sf.user_uuid FROM instance_metadata im
     JOIN save_folders sf ON im.folder_id = sf.id
     WHERE sf.user_uuid = ?
   `),
 };
 
-export default db;
+  return queriesCache;
+}
+
+export const queries: any = new Proxy({}, {
+  get: (target, prop) => {
+    const q = getQueries();
+    if (!q) {
+      console.warn(`Database not initialized when accessing queries.${String(prop)}`);
+      return null;
+    }
+    return q[prop];
+  }
+});
+
+export default {
+  getDb,
+  getQueries,
+  initializeDatabase,
+  prepare: (sql: string) => {
+    const database = getDb();
+    if (!database) {
+      console.warn('Database not initialized for prepare');
+      return { run: () => null, get: () => null, all: () => [] };
+    }
+    return database.prepare(sql);
+  },
+  transaction: (fn: any) => {
+    const database = getDb();
+    if (!database) {
+      console.warn('Database not initialized for transaction');
+      return fn([]);
+    }
+    return database.transaction(fn);
+  }
+};
