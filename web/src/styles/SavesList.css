@@ -1,0 +1,84 @@
+.saves-list {
+  background-color: var(--surface-color);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.saves-loading,
+.saves-empty {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-secondary);
+  background-color: var(--surface-color);
+  border-radius: 8px;
+  font-size: 16px;
+}
+
+.saves-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.saves-table thead {
+  background-color: #f5f5f5;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.saves-table th {
+  padding: 16px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.save-row {
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.save-row:hover {
+  background-color: #f9f9f9;
+}
+
+.saves-table td {
+  padding: 16px;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.save-name {
+  font-weight: 500;
+  color: var(--primary-color);
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.status-active {
+  background-color: #e8f5e9;
+  color: var(--success-color);
+}
+
+.status-abandoned {
+  background-color: #fff3e0;
+  color: var(--secondary-color);
+}
+
+.status-completed {
+  background-color: #e3f2fd;
+  color: var(--primary-color);
+}
+
+.status-deleted {
+  background-color: #ffebee;
+  color: var(--danger-color);
+}

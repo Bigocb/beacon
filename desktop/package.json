@@ -1,0 +1,76 @@
+{
+  "name": "beacon-desktop",
+  "version": "0.1.0",
+  "description": "Beacon - Minecraft analytics and enrichment platform",
+  "main": "dist/main.js",
+  "homepage": "./",
+  "scripts": {
+    "dev": "npm run build-electron && concurrently \"npm run react-dev\" \"wait-on http://localhost:5174 && electron .\"",
+    "react-dev": "vite",
+    "build": "npm run build-react && npm run build-electron",
+    "build-react": "vite build",
+    "build-electron": "tsc --outDir dist",
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "npm run build && electron-builder"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "better-sqlite3": "^9.0.0",
+    "chart.js": "^4.5.1",
+    "dotenv": "^16.3.1",
+    "prismarine-nbt": "^2.4.0",
+    "react": "^18.2.0",
+    "react-chartjs-2": "^5.3.1",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/node": "^20.10.5",
+    "@types/react": "^18.2.37",
+    "@types/react-dom": "^18.2.15",
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.0",
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.4",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.7",
+    "wait-on": "^7.0.1"
+  },
+  "build": {
+    "appId": "com.beacon.app",
+    "productName": "Beacon",
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*"
+    ],
+    "directories": {
+      "buildResources": "assets"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.utilities"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    }
+  }
+}

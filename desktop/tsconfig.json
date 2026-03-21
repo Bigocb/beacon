@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020", "DOM"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "sourceMap": true,
+    "baseUrl": "./src",
+    "noImplicitAny": false,
+    "moduleResolution": "node",
+    "types": ["vite/client"]
+  },
+  "include": ["src/**/*"],
+  "typeRoots": ["./node_modules/@types", "./src"],
+  "exclude": ["node_modules", "dist"]
+}

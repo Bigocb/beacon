@@ -1,0 +1,20 @@
+{
+  "name": "beacon",
+  "version": "0.1.0",
+  "description": "Beacon - Minecraft analytics and enrichment platform",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "desktop",
+    "web"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces",
+    "build": "npm run build --workspaces",
+    "install-all": "npm install && npm install -w backend && npm install -w desktop && npm install -w web",
+    "migrate": "npm run migrate -w backend"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.90.21"
+  }
+}
