@@ -86,9 +86,8 @@ export function registerScannerIPC() {
     try {
       // Fetch from backend API instead of local database
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const response = await axios.get(`http://localhost:3000/api/saves`, {
-        headers,
-        params: { user_uuid: userUuid }
+      const response = await axios.get(`http://localhost:3000/saves`, {
+        headers
       });
       return { success: true, saves: response.data.saves || [], savesCount: response.data.saves?.length || 0 };
     } catch (error: any) {
@@ -153,16 +152,15 @@ export function registerScannerIPC() {
     try {
       console.log('🔄 getInstanceMetadata called with UUID:', userUuid);
 
-      // Fetch from backend API instead of local database
+      // Fetch saves from backend API (instances are derived from saves)
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const response = await axios.get(`http://localhost:3000/api/instances`, {
-        headers,
-        params: { user_uuid: userUuid }
+      const response = await axios.get(`http://localhost:3000/saves`, {
+        headers
       });
-      const metadata = response.data.instances || [];
+      const metadata = response.data.saves || [];
       console.log('✅ Retrieved instance metadata count:', metadata.length);
       if (metadata.length > 0) {
-        console.log('📋 Instances:', metadata.map((m: any) => ({ folder_id: m.folder_id, instance_name: m.instance_name, user_uuid: m.user_uuid })));
+        console.log('📋 Instances:', metadata.map((m: any) => ({ id: m.id, world_name: m.world_name, version: m.version })));
       }
       return { success: true, metadata, metadataCount: metadata.length };
     } catch (error: any) {
@@ -174,9 +172,9 @@ export function registerScannerIPC() {
   ipcMain.handle('scanner:scanAllFolders', async (event, userUuid: string) => {
     try {
       console.log('🔄 Starting scanAllFolders for user:', userUuid);
-      // Fetch folders from backend API
-      const foldersResponse = await axios.get(`http://localhost:3000/api/save-folders?user_uuid=${userUuid}`);
-      const folders = foldersResponse.data.folders || [];
+      // For now, skip folder scanning since backend doesn't have folder management
+      // In the future, this should be implemented on the backend
+      const folders: any[] = [];
       console.log(`📁 Found ${folders.length} folders to scan`);
       if (folders.length > 0) {
         console.log('📋 Folders:', folders.map((f: any) => ({ id: f.id, path: f.folder_path, user_uuid: f.user_uuid })));
