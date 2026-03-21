@@ -30,7 +30,7 @@ router.get('/', async (req: Request, res: Response) => {
     );
 
     console.log('✅ [Backend] Found', result.rows.length, 'tags');
-    const tags = result.rows.map(row => ({
+    const tags = result.rows.map((row: any) => ({
       id: row.id,
       name: row.name,
       color: row.color,

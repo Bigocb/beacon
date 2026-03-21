@@ -1,15 +1,32 @@
-import { Pool } from 'pg';
+/**
+ * DEPRECATED: PostgreSQL connection
+ *
+ * This file is kept for compatibility with existing imports.
+ * New features should use SQLite (see sqliteNotes.ts)
+ *
+ * For v0.1, we're using SQLite for all local storage.
+ * PostgreSQL is not required for the desktop app.
+ */
 
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'minecraft_tracker',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
-});
+// Mock pool object for compatibility
+// Most endpoints that use this pool are not yet implemented
+const mockPool = {
+  query: async (sql: string, params?: any[]): Promise<{ rows: any[] }> => {
+    console.warn('⚠️  [Backend] PostgreSQL pool not available - feature not implemented');
+    return { rows: [] as any[] };
+  },
 
-pool.on('error', (err) => {
-  console.error('Unexpected error on idle client', err);
-});
+  connect: async () => {
+    console.warn('⚠️  [Backend] PostgreSQL pool not available - feature not implemented');
+    return {
+      query: async (sql: string, params?: any[]): Promise<{ rows: any[] }> => ({ rows: [] as any[] }),
+      release: () => {},
+    };
+  },
 
-export default pool;
+  end: async () => {
+    console.warn('⚠️  [Backend] PostgreSQL pool not available - feature not implemented');
+  },
+};
+
+export default mockPool;
