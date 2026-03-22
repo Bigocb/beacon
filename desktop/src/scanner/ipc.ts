@@ -116,18 +116,23 @@ export function registerScannerIPC() {
   // Folder management handlers
   ipcMain.handle('scanner:listFolders', async (event, userUuid: string) => {
     try {
+      if (!queries) {
+        return { success: true, folders: [], warning: 'Folder database unavailable - using default scan location' };
+      }
       const folders = queries.getSaveFolders.all(userUuid);
       return { success: true, folders };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      return { success: true, folders: [], warning: 'Folder management not available - use Scan All Folders instead' };
     }
   });
 
   ipcMain.handle('scanner:addFolder', async (event, userUuid: string, folderPath: string, displayName?: string) => {
     try {
+      if (!queries) {
+        return { success: false, error: 'Folder database unavailable - use Scan All Folders instead (Phase 2 feature)' };
+      }
       const id = uuidv4();
       const parts = folderPath.split(/[\\\/]/).filter(Boolean);
-      // Use the actual folder name (last part), not parent folder (second-to-last)
       const name = displayName || parts[parts.length - 1] || 'Minecraft Saves';
 
       queries.addSaveFolder.run(id, userUuid, folderPath, name);
@@ -135,16 +140,19 @@ export function registerScannerIPC() {
       const folder = queries.getSaveFolderById.get(id);
       return { success: true, folder };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      return { success: false, error: 'Failed to add folder - use Scan All Folders instead (Phase 2 feature)' };
     }
   });
 
   ipcMain.handle('scanner:removeFolder', async (event, folderId: string, userUuid: string) => {
     try {
+      if (!queries) {
+        return { success: false, error: 'Folder database unavailable - use Scan All Folders instead (Phase 2 feature)' };
+      }
       queries.removeSaveFolder.run(folderId, userUuid);
       return { success: true };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      return { success: false, error: 'Failed to remove folder' };
     }
   });
 
