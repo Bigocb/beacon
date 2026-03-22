@@ -1,6 +1,9 @@
 -- Fix: Remove foreign key constraint from notes table
 -- The desktop app stores saves locally, not in the database
 -- So notes can have save_ids that don't exist in the saves table
+--
+-- SQLite: Foreign keys are defined at table creation time and can't be dropped
+-- This is a PostgreSQL-style migration that doesn't apply to SQLite
+-- The notes table was created without the FK constraint, so no action needed
 
-ALTER TABLE notes
-DROP CONSTRAINT IF EXISTS notes_save_id_fkey;
+SELECT 1; -- No-op for SQLite

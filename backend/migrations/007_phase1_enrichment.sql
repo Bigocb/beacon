@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS notes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_notes_save_id ON notes(save_id);
-CREATE INDEX IF NOT EXISTS idx_notes_timestamp ON notes(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_notes_timestamp ON notes(timestamp);
 CREATE INDEX IF NOT EXISTS idx_notes_type ON notes(note_type);
 
 -- ============================================
@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS analytics_snapshots (
 );
 
 CREATE INDEX IF NOT EXISTS idx_analytics_save_id ON analytics_snapshots(save_id);
-CREATE INDEX IF NOT EXISTS idx_analytics_snapshot_date ON analytics_snapshots(snapshot_date DESC);
+CREATE INDEX IF NOT EXISTS idx_analytics_snapshot_date ON analytics_snapshots(snapshot_date);
 
 -- ============================================
 -- MILESTONES - Track progression goals

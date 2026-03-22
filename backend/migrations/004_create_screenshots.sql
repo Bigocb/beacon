@@ -13,4 +13,4 @@ CREATE TABLE IF NOT EXISTS screenshots (
 
 CREATE INDEX IF NOT EXISTS idx_screenshots_save_id ON screenshots(save_id);
 CREATE INDEX IF NOT EXISTS idx_screenshots_user_uuid ON screenshots(user_uuid);
-CREATE INDEX IF NOT EXISTS idx_screenshots_captured_at ON screenshots(captured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_screenshots_captured_at ON screenshots(captured_at);

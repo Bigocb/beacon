@@ -13,9 +13,9 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response)
 
     const query = `
       SELECT * FROM saves
-      WHERE user_uuid = $1 AND deleted_at IS NULL
+      WHERE user_uuid = ? AND deleted_at IS NULL
       ORDER BY last_played DESC
-      LIMIT $2 OFFSET $3;
+      LIMIT ? OFFSET ?;
     `;
 
     const result = await pool.query(query, [req.user?.uuid, limit, offset]);

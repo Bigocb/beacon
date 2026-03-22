@@ -14,4 +14,4 @@ CREATE TABLE IF NOT EXISTS backups (
 
 CREATE INDEX IF NOT EXISTS idx_backups_save_id ON backups(save_id);
 CREATE INDEX IF NOT EXISTS idx_backups_user_uuid ON backups(user_uuid);
-CREATE INDEX IF NOT EXISTS idx_backups_created_at ON backups(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_backups_created_at ON backups(created_at);

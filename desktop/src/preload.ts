@@ -27,7 +27,7 @@ const api = {
   scanner: {
     detectAccounts: () => ipcRenderer.invoke('scanner:detectAccounts'),
     scanSaves: (userUuid: string) => ipcRenderer.invoke('scanner:scanSaves', userUuid),
-    getSaves: (userUuid: string) => ipcRenderer.invoke('scanner:getSaves', userUuid),
+    getSaves: (userUuid: string, token?: string) => ipcRenderer.invoke('scanner:getSaves', userUuid, token),
     updateSave: (saveId: string, updates: any) =>
       ipcRenderer.invoke('scanner:updateSave', saveId, updates),
     listFolders: (userUuid: string) => ipcRenderer.invoke('scanner:listFolders', userUuid),
@@ -37,7 +37,7 @@ const api = {
       ipcRenderer.invoke('scanner:removeFolder', folderId, userUuid),
     scanAllFolders: (userUuid: string) => ipcRenderer.invoke('scanner:scanAllFolders', userUuid),
     scanFolder: (folderId: string, userUuid: string) => ipcRenderer.invoke('scanner:scanFolder', folderId, userUuid),
-    getInstanceMetadata: (userUuid: string) => ipcRenderer.invoke('scanner:getInstanceMetadata', userUuid),
+    getInstanceMetadata: (userUuid: string, token?: string) => ipcRenderer.invoke('scanner:getInstanceMetadata', userUuid, token),
     // Batch scanning: discover instances in a parent folder
     discoverInstances: (parentFolderPath: string) => ipcRenderer.invoke('scanner:discoverInstances', parentFolderPath),
     // Batch scan: add and scan all instances in a parent folder

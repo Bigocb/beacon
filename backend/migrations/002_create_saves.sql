@@ -25,5 +25,5 @@ CREATE TABLE IF NOT EXISTS saves (
 -- Create indexes
 CREATE INDEX IF NOT EXISTS idx_saves_user_uuid ON saves(user_uuid);
 CREATE INDEX IF NOT EXISTS idx_saves_world_name ON saves(world_name);
-CREATE INDEX IF NOT EXISTS idx_saves_last_played ON saves(last_played DESC);
+CREATE INDEX IF NOT EXISTS idx_saves_last_played ON saves(last_played);
 CREATE INDEX IF NOT EXISTS idx_saves_status ON saves(status);

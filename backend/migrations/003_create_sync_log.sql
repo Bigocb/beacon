@@ -8,4 +8,4 @@ CREATE TABLE IF NOT EXISTS sync_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sync_log_user_uuid ON sync_log(user_uuid);
-CREATE INDEX IF NOT EXISTS idx_sync_log_created_at ON sync_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sync_log_created_at ON sync_log(created_at);

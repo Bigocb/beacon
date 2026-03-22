@@ -7,7 +7,7 @@ const router = Router();
 // GET /users/me - Get current user profile
 router.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const query = 'SELECT * FROM users WHERE minecraft_uuid = $1';
+    const query = 'SELECT * FROM users WHERE minecraft_uuid = ?';
     const result = await pool.query(query, [req.user?.uuid]);
 
     if (result.rows.length === 0) {
@@ -30,11 +30,11 @@ router.patch('/me', authMiddleware, async (req: AuthenticatedRequest, res: Respo
     console.log('👤 [Backend] Updating user profile:', req.user?.uuid);
     const query = `
       UPDATE users
-      SET email = COALESCE($1, email),
-          profile_name = COALESCE($2, profile_name),
-          avatar_url = COALESCE($3, avatar_url),
-          updated_at = NOW()
-      WHERE minecraft_uuid = $4
+      SET email = COALESCE(?, email),
+          profile_name = COALESCE(?, profile_name),
+          avatar_url = COALESCE(?, avatar_url),
+          updated_at = datetime('now')
+      WHERE minecraft_uuid = ?
       RETURNING *;
     `;
 
@@ -66,9 +66,9 @@ router.patch('/me/preferences', authMiddleware, async (req: AuthenticatedRequest
     console.log('⚙️ [Backend] Updating user preferences:', req.user?.uuid);
     const query = `
       UPDATE users
-      SET theme_preference = COALESCE($1, theme_preference),
-          updated_at = NOW()
-      WHERE minecraft_uuid = $2
+      SET theme_preference = COALESCE(?, theme_preference),
+          updated_at = datetime('now')
+      WHERE minecraft_uuid = ?
       RETURNING *;
     `;
 
@@ -95,7 +95,7 @@ router.delete('/me', authMiddleware, async (req: AuthenticatedRequest, res: Resp
   try {
     console.log('🗑️ [Backend] Deleting user account:', req.user?.uuid);
 
-    const query = 'DELETE FROM users WHERE minecraft_uuid = $1 RETURNING minecraft_uuid;';
+    const query = 'DELETE FROM users WHERE minecraft_uuid = ? RETURNING minecraft_uuid;';
     const result = await pool.query(query, [req.user?.uuid]);
 
     if (result.rows.length === 0) {
