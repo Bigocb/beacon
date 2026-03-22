@@ -13,6 +13,7 @@ import notesRoutes from './api/notes';
 import tagsRoutes from './api/tags';
 import metadataRoutes from './api/metadata';
 import milestonesRoutes from './api/milestones';
+import foldersRoutes from './api/folders';
 
 dotenv.config();
 
@@ -58,6 +59,7 @@ app.get('/health', (req, res) => {
 app.use('/auth', authRoutes);
 app.use('/users', usersRoutes);
 app.use('/saves', savesRoutes);
+app.use('/folders', foldersRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/favorites', favoritesRoutes);
 app.use('/api', notesRoutes);

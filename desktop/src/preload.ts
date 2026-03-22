@@ -30,11 +30,8 @@ const api = {
     getSaves: (userUuid: string, token?: string) => ipcRenderer.invoke('scanner:getSaves', userUuid, token),
     updateSave: (saveId: string, updates: any) =>
       ipcRenderer.invoke('scanner:updateSave', saveId, updates),
-    listFolders: (userUuid: string) => ipcRenderer.invoke('scanner:listFolders', userUuid),
-    addFolder: (userUuid: string, folderPath: string, displayName?: string) =>
-      ipcRenderer.invoke('scanner:addFolder', userUuid, folderPath, displayName),
-    removeFolder: (folderId: string, userUuid: string) =>
-      ipcRenderer.invoke('scanner:removeFolder', folderId, userUuid),
+    // Note: Folder management now uses backend API via FolderManager component
+    // These are kept for backward compatibility but should call backend directly
     scanAllFolders: (userUuid: string) => ipcRenderer.invoke('scanner:scanAllFolders', userUuid),
     scanFolder: (folderId: string, userUuid: string) => ipcRenderer.invoke('scanner:scanFolder', folderId, userUuid),
     getInstanceMetadata: (userUuid: string, token?: string) => ipcRenderer.invoke('scanner:getInstanceMetadata', userUuid, token),

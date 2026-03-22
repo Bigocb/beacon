@@ -44,11 +44,16 @@ export const FolderManager: React.FC<FolderManagerProps> = ({
     setLoading(true);
     setError(null);
     try {
-      const result = await window.api.scanner.listFolders(userUuid);
-      if (result.success) {
-        setFolders(result.folders);
+      const token = localStorage.getItem('minecraft_tracker_auth_token');
+      const response = await fetch('http://localhost:3000/folders', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setFolders(data.folders || []);
       } else {
-        setError(result.error || 'Failed to load folders');
+        setError('Failed to load folders');
       }
     } catch (err: any) {
       setError(err.message);
@@ -65,12 +70,23 @@ export const FolderManager: React.FC<FolderManagerProps> = ({
       setLoading(true);
       setError(null);
 
-      const result = await window.api.scanner.addFolder(userUuid, folderPath);
-      if (result.success) {
-        setFolders([...folders, result.folder]);
+      const token = localStorage.getItem('minecraft_tracker_auth_token');
+      const response = await fetch('http://localhost:3000/folders', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ folder_path: folderPath }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setFolders([...folders, data.folder]);
         onFoldersChanged?.();
       } else {
-        setError(result.error || 'Failed to add folder');
+        const errorData = await response.json();
+        setError(errorData.error || 'Failed to add folder');
       }
     } catch (err: any) {
       setError(err.message);
@@ -86,12 +102,18 @@ export const FolderManager: React.FC<FolderManagerProps> = ({
       setLoading(true);
       setError(null);
 
-      const result = await window.api.scanner.removeFolder(folderId, userUuid);
-      if (result.success) {
+      const token = localStorage.getItem('minecraft_tracker_auth_token');
+      const response = await fetch(`http://localhost:3000/folders/${folderId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+
+      if (response.ok) {
         setFolders(folders.filter((f) => f.id !== folderId));
         onFoldersChanged?.();
       } else {
-        setError(result.error || 'Failed to remove folder');
+        const errorData = await response.json();
+        setError(errorData.error || 'Failed to remove folder');
       }
     } catch (err: any) {
       setError(err.message);
