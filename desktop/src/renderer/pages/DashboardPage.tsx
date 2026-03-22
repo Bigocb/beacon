@@ -120,7 +120,6 @@ export default function DashboardPage() {
         return;
       }
       const token = localStorage.getItem('minecraft_tracker_auth_token');
-      console.log('🔑 [loadSaves] Token from localStorage:', token ? `${token.substring(0, 20)}...` : 'null/undefined');
       const result = await window.api.scanner.getSaves(uuid, token);
 
       console.log('✅ getSaves result:', { success: result.success, savesCount: result.saves?.length || 0, error: result.error });

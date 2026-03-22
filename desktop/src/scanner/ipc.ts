@@ -85,20 +85,13 @@ export function registerScannerIPC() {
   ipcMain.handle('scanner:getSaves', async (event, userUuid: string, token?: string) => {
     try {
       // Fetch from backend API instead of local database
-      console.log('🔄 [getSaves] Called with token:', token ? `✓ token (${token.substring(0, 20)}...)` : '✗ no token');
-      console.log('   [getSaves] Token type:', typeof token, 'Token value:', token);
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      console.log('📤 [getSaves] Headers:', headers);
       const response = await axios.get(`http://localhost:3000/saves`, {
         headers
       });
-      console.log('✅ [getSaves] Response status:', response.status);
       return { success: true, saves: response.data.saves || [], savesCount: response.data.saves?.length || 0 };
     } catch (error: any) {
       console.error('❌ [getSaves] Error fetching saves:', error.message);
-      if (error.response?.status) {
-        console.error('   Status:', error.response.status, 'Data:', error.response.data);
-      }
       // Fallback to empty array if backend is unavailable
       return { success: false, savesCount: 0, error: error.message };
     }
@@ -157,25 +150,15 @@ export function registerScannerIPC() {
 
   ipcMain.handle('scanner:getInstanceMetadata', async (event, userUuid: string, token?: string) => {
     try {
-      console.log('🔄 [getInstanceMetadata] Called with UUID:', userUuid, 'Token:', token ? '✓' : '✗');
-
       // Fetch saves from backend API (instances are derived from saves)
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      console.log('📤 [getInstanceMetadata] Headers:', headers);
       const response = await axios.get(`http://localhost:3000/saves`, {
         headers
       });
       const metadata = response.data.saves || [];
-      console.log('✅ [getInstanceMetadata] Retrieved count:', metadata.length);
-      if (metadata.length > 0) {
-        console.log('📋 Instances:', metadata.map((m: any) => ({ id: m.id, world_name: m.world_name, version: m.version })));
-      }
       return { success: true, metadata, metadataCount: metadata.length };
     } catch (error: any) {
       console.error('❌ [getInstanceMetadata] Error:', error.message);
-      if (error.response?.status) {
-        console.error('   Status:', error.response.status, 'Data:', error.response.data);
-      }
       return { success: false, metadataCount: 0, error: error.message };
     }
   });
