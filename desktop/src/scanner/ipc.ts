@@ -4,15 +4,23 @@ import fs from 'fs';
 import path from 'path';
 import { scanMinecraftSaves, scanMinecraftSavesFromFolders, scanFolder, Save } from './index';
 import { getAllDetectedAccounts } from './profiles';
-import { analyzeInstanceMetadata, detectLauncherAndGetSavesPath } from './instance-metadata';
+import { detectLauncherAndGetSavesPath } from './instance-metadata';
 import { discoverInstancesInFolder } from './batch-scanner';
 import { launchInstance, findLauncherExecutable, LauncherType } from './launcher-executor';
 import { getInstanceMods } from './mods-scanner';
 import { getInstanceResourcepacks } from './resourcepacks-scanner';
 import { getInstanceShaderpacks } from './shaderpacks-scanner';
 import { getInstanceScreenshots } from './screenshots-scanner';
-import db, { queries } from '../db/sqlite';
-import { v4 as uuidv4 } from 'uuid';
+
+// GraphQL helper
+async function graphqlQuery(query: string, variables?: any, token?: string) {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await axios.post(`http://localhost:3000/graphql`, { query, variables }, { headers });
+  if (response.data.errors) {
+    throw new Error(response.data.errors[0].message);
+  }
+  return response.data.data;
+}
 
 export function registerScannerIPC() {
   ipcMain.handle('scanner:detectAccounts', async () => {
@@ -24,60 +32,32 @@ export function registerScannerIPC() {
     }
   });
 
-  ipcMain.handle('scanner:scanSaves', async (event, userUuid: string) => {
+  ipcMain.handle('scanner:scanSaves', async (event, userUuid: string, token?: string) => {
     try {
       const saves = await scanMinecraftSaves(userUuid);
+      console.log(`💾 Uploading ${saves.length} scanned saves to backend API...`);
 
-      // Store in local SQLite database
-      const stmt = db.transaction((savesToInsert: Save[]) => {
-        for (const save of savesToInsert) {
-          const existing = queries.getSaveById.get(save.id);
+      // Upload scanned saves to backend via GraphQL
+      // Use custom serializer to handle BigInt values in file stats
+      const savesJson = JSON.parse(JSON.stringify(saves, (key, value) =>
+        typeof value === 'bigint' ? Number(value) : value
+      ));
 
-          if (existing) {
-            // Update existing
-            queries.updateSave.run(
-              save.notes || null,
-              save.status || null,
-              null,
-              save.id
-            );
-          } else {
-            // Insert new
-            queries.insertSave.run(
-              save.id,
-              save.user_uuid,
-              save.folder_id || null,
-              save.world_name,
-              save.file_path,
-              save.version,
-              save.game_mode,
-              save.difficulty,
-              save.seed,
-              save.play_time_ticks,
-              save.spawn_x,
-              save.spawn_y,
-              save.spawn_z,
-              save.health || null,
-              save.hunger || null,
-              save.level || null,
-              save.xp || null,
-              save.food_eaten || null,
-              save.beds_slept_in || null,
-              save.deaths || null,
-              save.blocks_mined || null,
-              save.blocks_placed || null,
-              save.items_crafted || null,
-              save.mobs_killed || null,
-              save.damage_taken || null
-            );
+      const mutation = `
+        mutation batchUpsert($saves: [SaveInput!]!) {
+          batchUpsertSaves(saves: $saves) {
+            inserted
+            updated
+            message
           }
         }
-      });
+      `;
 
-      stmt(saves);
-
-      return { success: true, saves };
+      const result = await graphqlQuery(mutation, { saves: savesJson }, token);
+      console.log(`✅ Backend response:`, result.batchUpsertSaves);
+      return { success: true, saves: result.batchUpsertSaves || savesJson };
     } catch (error: any) {
+      console.error('❌ [scanSaves] Error uploading to backend:', error.message);
       return { success: false, error: error.message };
     }
   });
@@ -86,7 +66,7 @@ export function registerScannerIPC() {
     try {
       // Fetch from backend API instead of local database
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const response = await axios.get(`http://localhost:3000/saves`, {
+      const response = await axios.get(`http://localhost:3001/saves`, {
         headers
       });
       return { success: true, saves: response.data.saves || [], savesCount: response.data.saves?.length || 0 };
@@ -97,18 +77,18 @@ export function registerScannerIPC() {
     }
   });
 
-  ipcMain.handle('scanner:updateSave', async (event, saveId: string, updates: any) => {
+  ipcMain.handle('scanner:updateSave', async (event, saveId: string, updates: any, token?: string) => {
     try {
-      queries.updateSave.run(
-        updates.notes || null,
-        updates.status || null,
-        updates.custom_tags ? JSON.stringify(updates.custom_tags) : null,
-        saveId
-      );
+      // Update save via backend API
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const response = await axios.patch(`http://localhost:3001/saves/${saveId}`, updates, {
+        headers
+      });
 
-      const updated = queries.getSaveById.get(saveId);
-      return { success: true, save: updated };
+      console.log(`✅ [updateSave] Save updated on backend`);
+      return { success: true, save: response.data };
     } catch (error: any) {
+      console.error('❌ [updateSave] Error updating save:', error.message);
       return { success: false, error: error.message };
     }
   });
@@ -118,12 +98,31 @@ export function registerScannerIPC() {
 
   ipcMain.handle('scanner:getInstanceMetadata', async (event, userUuid: string, token?: string) => {
     try {
-      // Fetch saves from backend API (instances are derived from saves)
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const response = await axios.get(`http://localhost:3000/saves`, {
-        headers
-      });
-      const metadata = response.data.saves || [];
+      const query = `
+        query {
+          instances {
+            folder_id
+            display_name
+            instance_name
+            mod_loader
+            loader_version
+            game_version
+            instance_type
+            launcher
+            save_count
+            mod_count
+          }
+        }
+      `;
+
+      const response = await axios.post(`http://localhost:3000/graphql`, { query }, { headers });
+
+      if (response.data.errors) {
+        throw new Error(response.data.errors[0].message);
+      }
+
+      const metadata = response.data.data?.instances || [];
       return { success: true, metadata, metadataCount: metadata.length };
     } catch (error: any) {
       console.error('❌ [getInstanceMetadata] Error:', error.message);
@@ -131,15 +130,18 @@ export function registerScannerIPC() {
     }
   });
 
-  ipcMain.handle('scanner:scanAllFolders', async (event, userUuid: string) => {
+  ipcMain.handle('scanner:scanAllFolders', async (event, userUuid: string, token?: string) => {
     try {
       console.log('🔄 Starting scanAllFolders for user:', userUuid);
-      // For now, skip folder scanning since backend doesn't have folder management
-      // In the future, this should be implemented on the backend
-      const folders: any[] = [];
+
+      // Fetch configured folders from backend API
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const foldersResponse = await axios.get(`http://localhost:3001/folders`, { headers });
+      const folders = foldersResponse.data.folders || [];
+
       console.log(`📁 Found ${folders.length} folders to scan`);
       if (folders.length > 0) {
-        console.log('📋 Folders:', folders.map((f: any) => ({ id: f.id, path: f.folder_path, user_uuid: f.user_uuid })));
+        console.log('📋 Folders:', folders.map((f: any) => ({ id: f.id, path: f.folder_path })));
       }
 
       // If no custom folders, fall back to default Minecraft saves location
@@ -149,145 +151,41 @@ export function registerScannerIPC() {
 
       console.log(`💾 Found ${saves.length} total saves`);
 
-      // Analyze and store instance metadata for each folder
-      folders.forEach((folder: any) => {
-        try {
-          console.log(`\n🎯 Analyzing metadata for folder: ${folder.folder_path}`);
+      // Upload scanned saves to backend via GraphQL
+      // Use custom serializer to handle BigInt values in file stats
+      const savesJson = JSON.parse(JSON.stringify(saves, (key, value) =>
+        typeof value === 'bigint' ? Number(value) : value
+      ));
 
-          // Get saves for this specific folder
-          const folderSaves = saves.filter((save: Save) => save.folder_id === folder.id);
-          console.log(`  📋 Found ${folderSaves.length} saves in this folder`);
-
-          // If any saves have unknown version, try to get from manifest.json
-          if (folderSaves.some(s => s.version === 'unknown')) {
-            try {
-              const manifestPath = path.join(folder.folder_path, 'manifest.json');
-              if (fs.existsSync(manifestPath)) {
-                const manifestContent = fs.readFileSync(manifestPath, 'utf-8');
-                const manifest = JSON.parse(manifestContent);
-                const manifestVersion = manifest.minecraft?.version;
-                if (manifestVersion) {
-                  console.log(`  📦 Found version from manifest.json: ${manifestVersion}`);
-                  folderSaves.forEach(save => {
-                    if (save.version === 'unknown') {
-                      save.version = manifestVersion;
-                    }
-                  });
-                }
-              }
-            } catch (error) {
-              console.warn(`  ⚠️ Could not read manifest.json for fallback version:`, error);
-            }
-          }
-
-          // Log save versions detected
-          if (folderSaves.length > 0) {
-            console.log(`  📋 Save versions detected:`);
-            folderSaves.forEach((save: Save) => {
-              console.log(`    - ${save.world_name}: version=${save.version}`);
-            });
-          }
-
-          const metadata = analyzeInstanceMetadata(folder.folder_path, folder.id);
-
-          // Extract game version from first save if available (fallback only)
-          const gameVersionFromSave = folderSaves.length > 0 ? folderSaves[0].version : undefined;
-          if (gameVersionFromSave && !metadata.game_version) {
-            metadata.game_version = gameVersionFromSave;
-            console.log(`  📌 Game version from save (fallback): ${gameVersionFromSave}`);
-          }
-
-          console.log(`  ✅ Metadata analyzed:`, {
-            launcher: metadata.launcher,
-            mod_loader: metadata.mod_loader,
-            mod_count: metadata.mod_count,
-            instance_name: metadata.instance_name,
-            game_version: metadata.game_version,
-          });
-          queries.saveInstanceMetadata.run(
-            metadata.folder_id,
-            metadata.mod_loader,
-            metadata.loader_version || null,
-            metadata.game_version || null,
-            metadata.mod_count,
-            metadata.icon_path || null,
-            metadata.instance_type,
-            metadata.launcher || null,
-            metadata.instance_name || null,
-            metadata.folder_size_mb || null,
-            metadata.mods_folder_size_mb || null
-          );
-          console.log(`  💾 Instance metadata saved to database with folder_id: ${metadata.folder_id}`);
-        } catch (error) {
-          console.error(`Error analyzing metadata for folder ${folder.id}:`, error);
-        }
-      });
-
-      // Store in local SQLite database
-      const stmt = db.transaction((savesToInsert: Save[]) => {
-        for (const save of savesToInsert) {
-          const existing = queries.getSaveById.get(save.id);
-
-          if (existing) {
-            // Update existing with new metadata (including version)
-            queries.updateSaveMetadata.run(
-              save.version,
-              save.game_mode,
-              save.difficulty,
-              save.seed,
-              save.play_time_ticks,
-              save.spawn_x,
-              save.spawn_y,
-              save.spawn_z,
-              save.id
-            );
-          } else {
-            // Insert new
-            queries.insertSave.run(
-              save.id,
-              save.user_uuid,
-              save.folder_id || null,
-              save.world_name,
-              save.file_path,
-              save.version,
-              save.game_mode,
-              save.difficulty,
-              save.seed,
-              save.play_time_ticks,
-              save.spawn_x,
-              save.spawn_y,
-              save.spawn_z,
-              save.health || null,
-              save.hunger || null,
-              save.level || null,
-              save.xp || null,
-              save.food_eaten || null,
-              save.beds_slept_in || null,
-              save.deaths || null,
-              save.blocks_mined || null,
-              save.blocks_placed || null,
-              save.items_crafted || null,
-              save.mobs_killed || null,
-              save.damage_taken || null
-            );
+      const mutation = `
+        mutation batchUpsert($saves: [SaveInput!]!) {
+          batchUpsertSaves(saves: $saves) {
+            inserted
+            updated
+            message
           }
         }
-      });
+      `;
 
-      stmt(saves);
-      console.log(`💾 Stored ${saves.length} saves in database`);
-
-      return { success: true, saves };
+      const result = await graphqlQuery(mutation, { saves: savesJson }, token);
+      console.log(`✅ Backend response:`, result.batchUpsertSaves);
+      return { success: true, saves: result.batchUpsertSaves || saves };
     } catch (error: any) {
+      console.error('❌ [scanAllFolders] Error:', error.message);
       return { success: false, error: error.message };
     }
   });
 
   // Scan a single folder
-  ipcMain.handle('scanner:scanFolder', async (event, folderId: string, userUuid: string) => {
+  ipcMain.handle('scanner:scanFolder', async (event, folderId: string, userUuid: string, token?: string) => {
     try {
       console.log(`🔄 Starting scanFolder for folder: ${folderId}, user: ${userUuid}`);
-      const folder = queries.getSaveFolderById.get(folderId);
+
+      // Get folder path from backend API
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const foldersResponse = await axios.get(`http://localhost:3001/folders`, { headers });
+      const folders = foldersResponse.data.folders || [];
+      const folder = folders.find((f: any) => f.id === folderId);
 
       if (!folder) {
         return { success: false, error: 'Folder not found' };
@@ -330,99 +228,19 @@ export function registerScannerIPC() {
         });
       }
 
-      // Analyze and store instance metadata for this folder
-      try {
-        console.log(`\n🎯 Analyzing metadata for folder: ${folder.folder_path}`);
-        const metadata = analyzeInstanceMetadata(folder.folder_path, folderId);
-
-        // Extract game version from first save if available (fallback only)
-        const gameVersionFromSave = saves.length > 0 ? saves[0].version : undefined;
-        if (gameVersionFromSave && !metadata.game_version) {
-          metadata.game_version = gameVersionFromSave;
-          console.log(`📌 Game version from save (fallback): ${gameVersionFromSave}`);
-        }
-
-        console.log(`✅ Metadata analyzed:`, {
-          launcher: metadata.launcher,
-          mod_loader: metadata.mod_loader,
-          loader_version: metadata.loader_version,
-          game_version: metadata.game_version,
-          mod_count: metadata.mod_count,
-          instance_name: metadata.instance_name,
-        });
-        queries.saveInstanceMetadata.run(
-          metadata.folder_id,
-          metadata.mod_loader,
-          metadata.loader_version || null,
-          metadata.game_version || null,
-          metadata.mod_count,
-          metadata.icon_path || null,
-          metadata.instance_type,
-          metadata.launcher || null,
-          metadata.instance_name || null,
-          metadata.folder_size_mb || null,
-          metadata.mods_folder_size_mb || null
-        );
-      } catch (error) {
-        console.error(`Error analyzing metadata for folder ${folderId}:`, error);
-      }
-
-      // Store in local SQLite database
-      const stmt = db.transaction((savesToInsert: Save[]) => {
-        for (const save of savesToInsert) {
-          const existing = queries.getSaveById.get(save.id);
-
-          if (existing) {
-            // Update existing with new metadata (including version)
-            queries.updateSaveMetadata.run(
-              save.version,
-              save.game_mode,
-              save.difficulty,
-              save.seed,
-              save.play_time_ticks,
-              save.spawn_x,
-              save.spawn_y,
-              save.spawn_z,
-              save.id
-            );
-          } else {
-            // Insert new
-            queries.insertSave.run(
-              save.id,
-              save.user_uuid,
-              save.folder_id || null,
-              save.world_name,
-              save.file_path,
-              save.version,
-              save.game_mode,
-              save.difficulty,
-              save.seed,
-              save.play_time_ticks,
-              save.spawn_x,
-              save.spawn_y,
-              save.spawn_z,
-              save.health || null,
-              save.hunger || null,
-              save.level || null,
-              save.xp || null,
-              save.food_eaten || null,
-              save.beds_slept_in || null,
-              save.deaths || null,
-              save.blocks_mined || null,
-              save.blocks_placed || null,
-              save.items_crafted || null,
-              save.mobs_killed || null,
-              save.damage_taken || null
-            );
-          }
-        }
+      // Upload scanned saves to backend
+      // Use custom serializer to handle BigInt values in file stats
+      const savesJson = JSON.parse(JSON.stringify(saves, (key, value) =>
+        typeof value === 'bigint' ? Number(value) : value
+      ));
+      const batchResponse = await axios.post(`http://localhost:3001/saves/batch`, { saves: savesJson }, {
+        headers
       });
 
-      stmt(saves);
-      console.log(`💾 Stored ${saves.length} saves in database`);
-      return { success: true, saves };
+      console.log(`✅ Backend response:`, batchResponse.data);
+      return { success: true, saves: batchResponse.data || savesJson };
     } catch (error: any) {
-      console.error('Error scanning folder:', error);
+      console.error('❌ [scanFolder] Error:', error.message);
       return { success: false, error: error.message };
     }
   });
@@ -440,7 +258,7 @@ export function registerScannerIPC() {
   });
 
   // Batch scan: add and scan all instances in a parent folder
-  ipcMain.handle('scanner:batchAddAndScan', async (event, userUuid: string, parentFolderPath: string) => {
+  ipcMain.handle('scanner:batchAddAndScan', async (event, userUuid: string, parentFolderPath: string, token?: string) => {
     try {
       console.log(`\n📦 Batch scanning parent folder for user: ${userUuid}`);
 
@@ -451,15 +269,21 @@ export function registerScannerIPC() {
         return { success: false, error: 'No Minecraft instances found in this folder' };
       }
 
-      console.log(`\n➕ Adding ${instances.length} instance(s) to database...`);
+      console.log(`\n➕ Adding ${instances.length} instance(s) via backend API...`);
 
-      // Add all instances as save folders
+      // Add all instances as save folders via backend API
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
       const addedFolders: Array<{ id: string; path: string; name: string }> = [];
+
       for (const instance of instances) {
         try {
-          const folderId = uuidv4();
-          queries.addSaveFolder.run(folderId, userUuid, instance.path, instance.name);
-          addedFolders.push({ id: folderId, path: instance.path, name: instance.name });
+          const folderResponse = await axios.post(`http://localhost:3001/folders`, {
+            folder_path: instance.path,
+            display_name: instance.name
+          }, { headers });
+
+          const folder = folderResponse.data.folder;
+          addedFolders.push({ id: folder.id, path: folder.folder_path, name: folder.display_name });
           console.log(`  ✓ Added: ${instance.name}`);
         } catch (error) {
           console.error(`  ✗ Failed to add ${instance.name}:`, error);
@@ -468,8 +292,9 @@ export function registerScannerIPC() {
 
       console.log(`\n🔄 Scanning saves for all instances...`);
 
-      // Get all folders for this user (including newly added ones)
-      const folders = queries.getSaveFolders.all(userUuid);
+      // Fetch all folders for this user (including newly added ones)
+      const foldersResponse = await axios.get(`http://localhost:3001/folders`, { headers });
+      const folders = foldersResponse.data.folders || [];
 
       // Scan all folders for saves
       const saves = await scanMinecraftSavesFromFolders(
@@ -477,70 +302,16 @@ export function registerScannerIPC() {
         folders.map((f: any) => ({ id: f.id, path: f.folder_path }))
       );
 
-      // Analyze and store instance metadata for each folder
-      folders.forEach((folder: any) => {
-        try {
-          console.log(`\n📊 Analyzing: ${folder.folder_path}`);
-          const metadata = analyzeInstanceMetadata(folder.folder_path, folder.id);
-          queries.saveInstanceMetadata.run(
-            metadata.folder_id,
-            metadata.mod_loader,
-            metadata.loader_version || null,
-            metadata.game_version || null,
-            metadata.mod_count,
-            metadata.icon_path || null,
-            metadata.instance_type,
-            metadata.launcher || null,
-            metadata.instance_name || null,
-            metadata.folder_size_mb || null,
-            metadata.mods_folder_size_mb || null
-          );
-        } catch (error) {
-          console.error(`Error analyzing metadata for folder ${folder.id}:`, error);
-        }
+      // Upload scanned saves to backend
+      // Use custom serializer to handle BigInt values in file stats
+      const savesJson = JSON.parse(JSON.stringify(saves, (key, value) =>
+        typeof value === 'bigint' ? Number(value) : value
+      ));
+      const batchResponse = await axios.post(`http://localhost:3001/saves/batch`, { saves: savesJson }, {
+        headers
       });
 
-      // Store saves in database
-      const stmt = db.transaction((savesToInsert: Save[]) => {
-        for (const save of savesToInsert) {
-          const existing = queries.getSaveById.get(save.id);
-          if (existing) {
-            queries.updateSave.run(save.notes || null, save.status || null, null, save.id);
-          } else {
-            queries.insertSave.run(
-              save.id,
-              save.user_uuid,
-              save.folder_id || null,
-              save.world_name,
-              save.file_path,
-              save.version,
-              save.game_mode,
-              save.difficulty,
-              save.seed,
-              save.play_time_ticks,
-              save.spawn_x,
-              save.spawn_y,
-              save.spawn_z,
-              save.health || null,
-              save.hunger || null,
-              save.level || null,
-              save.xp || null,
-              save.food_eaten || null,
-              save.beds_slept_in || null,
-              save.deaths || null,
-              save.blocks_mined || null,
-              save.blocks_placed || null,
-              save.items_crafted || null,
-              save.mobs_killed || null,
-              save.damage_taken || null
-            );
-          }
-        }
-      });
-
-      stmt(saves);
-
-      console.log(`\n✅ Batch scan complete! Found ${addedFolders.length} instances and ${saves.length} saves`);
+      console.log(`\n✅ Batch scan complete! Added ${addedFolders.length} instance(s) and found ${saves.length} save(s)`);
 
       return {
         success: true,
@@ -549,7 +320,7 @@ export function registerScannerIPC() {
         instances: addedFolders
       };
     } catch (error: any) {
-      console.error('Batch scan error:', error);
+      console.error('❌ [batchAddAndScan] Error:', error.message);
       return { success: false, error: error.message };
     }
   });

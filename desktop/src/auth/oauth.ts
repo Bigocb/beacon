@@ -1,5 +1,4 @@
 import { ipcMain, BrowserWindow } from 'electron';
-import db, { queries } from '../db/sqlite';
 import axios from 'axios';
 import http from 'http';
 import url from 'url';
@@ -121,35 +120,11 @@ function stopOAuthServer(): void {
 
 // Restore auth session from database on app startup
 export function restoreAuthFromDatabase() {
-  try {
-    // Query the auth table for the most recent auth record
-    const authRecords = db.prepare('SELECT * FROM auth ORDER BY updated_at DESC LIMIT 1').all();
-
-    if (authRecords && authRecords.length > 0) {
-      const authRecord = authRecords[0];
-      console.log('🔄 Restoring auth session from database:', authRecord.username);
-
-      // Restore to in-memory session
-      currentAuthSession = {
-        userId: authRecord.id,
-        uuid: authRecord.user_uuid,
-        username: authRecord.username,
-        email: authRecord.username, // We don't store email separately, use username as fallback
-        accessToken: authRecord.token,
-        refreshToken: null, // We don't persist refresh token currently
-        expiresAt: new Date(authRecord.token_expires_at),
-      };
-
-      console.log('✓ Auth session restored successfully for user:', authRecord.username);
-      return true;
-    } else {
-      console.log('ℹ No existing auth session found in database');
-      return false;
-    }
-  } catch (error: any) {
-    console.error('Error restoring auth from database:', error.message);
-    return false;
-  }
+  // Auth session is now handled by React via localStorage and UserContext
+  // The local SQLite database is no longer used for auth storage
+  // Token persistence and restoration happens in the renderer process
+  console.log('ℹ Auth restoration handled by React/UserContext (localStorage)');
+  return false;
 }
 
 export function registerIPC() {
@@ -236,35 +211,8 @@ export function registerIPC() {
       console.log('✓ User info:', { uuid: user.uuid, username: user.username });
 
       // Token will be stored in localStorage by the renderer
-      // Store in SQLite for offline/fallback use
       const userId = `minecraft-${user.uuid}`;
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days (JWT expiry from backend)
-
-      console.log('💾 Storing auth session in SQLite database...');
-      // Use explicit update logic to avoid CASCADE DELETE on REPLACE
-      try {
-        const existingRecord = db.prepare('SELECT * FROM auth WHERE id = ?').get(userId);
-        if (existingRecord) {
-          console.log(`📝 Updating existing auth entry for ${userId}`);
-          db.prepare(`
-            UPDATE auth SET
-              username = ?,
-              token = ?,
-              token_expires_at = ?,
-              updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `).run(user.username, token, expiresAt.toISOString(), userId);
-        } else {
-          console.log(`➕ Inserting new auth entry for ${userId}`);
-          db.prepare(`
-            INSERT INTO auth (id, user_uuid, username, token, token_expires_at)
-            VALUES (?, ?, ?, ?, ?)
-          `).run(userId, user.uuid, user.username, token, expiresAt.toISOString());
-        }
-      } catch (dbError: any) {
-        console.error('❌ Database error saving auth:', dbError.message);
-        throw dbError;
-      }
 
       // Store in memory for quick access
       currentAuthSession = {

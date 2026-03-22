@@ -74,7 +74,8 @@ export default function DashboardPage() {
           return;
         }
 
-        const result = await window.api.favorites.getAll();
+        const token = localStorage.getItem('minecraft_tracker_auth_token');
+        const result = await window.api.favorites.getAll(token);
         if (result.success) {
           setFavoriteInstances(new Set(result.favorites || []));
         } else {
@@ -166,7 +167,8 @@ export default function DashboardPage() {
       setError(null);
 
       // Scan all configured folders (or default if none configured)
-      const result = await window.api.scanner.scanAllFolders(currentUser?.minecraft_uuid);
+      const token = localStorage.getItem('minecraft_tracker_auth_token');
+      const result = await window.api.scanner.scanAllFolders(currentUser?.minecraft_uuid, token);
 
       if (result.success) {
         // Reload saves from database to get all scanned saves
@@ -189,7 +191,8 @@ export default function DashboardPage() {
       setError(null);
 
       // Scan just this specific folder
-      const result = await window.api.scanner.scanFolder(folderId, currentUser?.minecraft_uuid);
+      const token = localStorage.getItem('minecraft_tracker_auth_token');
+      const result = await window.api.scanner.scanFolder(folderId, currentUser?.minecraft_uuid, token);
 
       if (result.success) {
         // Reload saves from database
@@ -231,11 +234,12 @@ export default function DashboardPage() {
   async function toggleFavorite(folderId: string, e: React.MouseEvent) {
     e.stopPropagation();
     const isFavorited = favoriteInstances.has(folderId);
+    const token = localStorage.getItem('minecraft_tracker_auth_token');
 
     try {
       if (isFavorited) {
         // Remove from favorites
-        const result = await window.api.favorites.remove(folderId);
+        const result = await window.api.favorites.remove(folderId, token || undefined);
         if (result.success) {
           const newFavorites = new Set(favoriteInstances);
           newFavorites.delete(folderId);
@@ -245,7 +249,7 @@ export default function DashboardPage() {
         }
       } else {
         // Add to favorites
-        const result = await window.api.favorites.add(folderId);
+        const result = await window.api.favorites.add(folderId, token || undefined);
         if (result.success) {
           const newFavorites = new Set(favoriteInstances);
           newFavorites.add(folderId);
@@ -275,16 +279,17 @@ export default function DashboardPage() {
         break;
       case 'toggle-favorite':
         try {
+          const token = localStorage.getItem('minecraft_tracker_auth_token');
           const isFavorited = favoriteInstances.has(instanceId);
           if (isFavorited) {
-            const result = await window.api.favorites.remove(instanceId);
+            const result = await window.api.favorites.remove(instanceId, token || undefined);
             if (result.success) {
               const newFavorites = new Set(favoriteInstances);
               newFavorites.delete(instanceId);
               setFavoriteInstances(newFavorites);
             }
           } else {
-            const result = await window.api.favorites.add(instanceId);
+            const result = await window.api.favorites.add(instanceId, token || undefined);
             if (result.success) {
               const newFavorites = new Set(favoriteInstances);
               newFavorites.add(instanceId);
@@ -651,7 +656,7 @@ export default function DashboardPage() {
                       >
                         <div className="instance-header-info">
                           <div className="instance-title-row">
-                            <h3>{instance.display_name}</h3>
+                            <h3>{instance.display_name || instance.instance_name || instance.folder_id}</h3>
                             {syncingInstanceId === instance.folder_id ? (
                               <span className="launcher-icon" title="Syncing...">
                                 ⟳
@@ -671,8 +676,8 @@ export default function DashboardPage() {
                             ) : null}
                           </div>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <span className={`loader-badge loader-${instance.mod_loader}`}>
-                              {instance.mod_loader.charAt(0).toUpperCase() + instance.mod_loader.slice(1)}
+                            <span className={`loader-badge loader-${instance.mod_loader || 'vanilla'}`}>
+                              {(instance.mod_loader || 'vanilla').charAt(0).toUpperCase() + (instance.mod_loader || 'vanilla').slice(1)}
                               {instance.loader_version && ` v${instance.loader_version}`}
                             </span>
                             <button

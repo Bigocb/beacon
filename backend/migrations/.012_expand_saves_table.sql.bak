@@ -1,0 +1,29 @@
+-- Expand saves table with analytics and instance metadata
+-- Adding columns for player stats, instance info, and folder management
+
+ALTER TABLE saves ADD COLUMN health INTEGER;
+ALTER TABLE saves ADD COLUMN hunger INTEGER;
+ALTER TABLE saves ADD COLUMN level INTEGER;
+ALTER TABLE saves ADD COLUMN xp FLOAT;
+ALTER TABLE saves ADD COLUMN food_eaten INTEGER;
+ALTER TABLE saves ADD COLUMN beds_slept_in INTEGER;
+ALTER TABLE saves ADD COLUMN deaths INTEGER;
+ALTER TABLE saves ADD COLUMN blocks_mined INTEGER;
+ALTER TABLE saves ADD COLUMN blocks_placed INTEGER;
+ALTER TABLE saves ADD COLUMN items_crafted INTEGER;
+ALTER TABLE saves ADD COLUMN mobs_killed INTEGER;
+ALTER TABLE saves ADD COLUMN damage_taken FLOAT;
+ALTER TABLE saves ADD COLUMN mod_loader VARCHAR(20) DEFAULT 'vanilla';
+ALTER TABLE saves ADD COLUMN loader_version VARCHAR(50);
+ALTER TABLE saves ADD COLUMN game_version VARCHAR(50);
+ALTER TABLE saves ADD COLUMN mod_count INTEGER DEFAULT 0;
+ALTER TABLE saves ADD COLUMN icon_path VARCHAR(1024);
+ALTER TABLE saves ADD COLUMN instance_type VARCHAR(50) DEFAULT 'unknown';
+ALTER TABLE saves ADD COLUMN launcher VARCHAR(50) DEFAULT 'unknown';
+ALTER TABLE saves ADD COLUMN instance_name VARCHAR(255);
+ALTER TABLE saves ADD COLUMN folder_size_mb FLOAT;
+ALTER TABLE saves ADD COLUMN mods_folder_size_mb FLOAT;
+
+-- Create indexes for commonly queried fields
+CREATE INDEX IF NOT EXISTS idx_saves_mod_loader ON saves(mod_loader);
+CREATE INDEX IF NOT EXISTS idx_saves_launcher ON saves(launcher);

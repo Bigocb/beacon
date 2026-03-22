@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import axios from 'axios';
 
 export interface User {
   minecraft_uuid: string;
@@ -53,29 +54,42 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
           return;
         }
 
-        // Try to fetch current user from backend
+        // Try to fetch current user from backend via GraphQL
         console.log('📤 [UserContext] Fetching user from backend...');
-        const response = await fetch('http://localhost:3000/users/me', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
+        const query = `
+          query {
+            currentUser {
+              minecraft_uuid
+              username
+              email
+              profile_name
+              avatar_url
+              theme_preference
+              created_at
+            }
+          }
+        `;
+
+        const response = await axios.post(`http://localhost:3000/graphql`, { query }, {
+          headers: { Authorization: `Bearer ${token}` }
         });
 
-        console.log('📥 [UserContext] Backend response status:', response.status);
-        if (response.ok) {
-          const userData = await response.json();
+        console.log('📥 [UserContext] Backend response received');
+        if (response.data.errors) {
+          if (response.data.errors[0]?.message?.includes('401') || response.data.errors[0]?.message?.includes('Unauthorized')) {
+            // Token invalid, clear it
+            localStorage.removeItem('minecraft_tracker_auth_token');
+            setCurrentUser(null);
+            console.log('⚠️ [UserContext] Auth token invalid, cleared');
+          } else {
+            console.warn('⚠️ [UserContext] GraphQL error:', response.data.errors[0]?.message);
+          }
+        } else if (response.data.data?.currentUser) {
+          const userData = response.data.data.currentUser;
           setCurrentUser(userData);
           console.log('✅ [UserContext] User initialized from backend:', { uuid: userData.minecraft_uuid, username: userData.username });
-        } else if (response.status === 401) {
-          // Token invalid, clear it
-          localStorage.removeItem('minecraft_tracker_auth_token');
-          setCurrentUser(null);
-          console.log('⚠️ [UserContext] Auth token invalid (401), cleared');
         } else {
-          console.warn('⚠️ [UserContext] Backend fetch failed with status:', response.status);
-          // For local accounts, the backend might not have the user
-          // The user should have been set directly by LoginPage via setCurrentUser()
-          console.log('ℹ️ [UserContext] Keeping currentUser as-is (may have been set by LoginPage)');
+          console.log('ℹ️ [UserContext] No user data returned (may have been set by LoginPage)');
         }
       } catch (err) {
         console.error('❌ [UserContext] Error initializing user:', err);
@@ -108,18 +122,30 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         return;
       }
 
-      const response = await fetch('http://localhost:3000/users/me', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+      const query = `
+        query {
+          currentUser {
+            minecraft_uuid
+            username
+            email
+            profile_name
+            avatar_url
+            theme_preference
+            created_at
+          }
+        }
+      `;
+
+      const response = await axios.post(`http://localhost:3000/graphql`, { query }, {
+        headers: { Authorization: `Bearer ${token}` }
       });
 
-      if (response.ok) {
-        const userData = await response.json();
+      if (response.data.errors) {
+        logout();
+      } else if (response.data.data?.currentUser) {
+        const userData = response.data.data.currentUser;
         setCurrentUser(userData);
         console.log('✅ [UserContext] User refreshed:', userData.username);
-      } else {
-        logout();
       }
     } catch (err) {
       console.error('❌ [UserContext] Error refreshing user:', err);

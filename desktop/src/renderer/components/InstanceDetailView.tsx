@@ -239,7 +239,7 @@ export default function InstanceDetailView({
             value={
               <div>
                 <div className="loader-badge-large" style={{ backgroundColor: colors.bg, color: colors.text }}>
-                  {instance.mod_loader.charAt(0).toUpperCase() + instance.mod_loader.slice(1)}
+                  {(instance.mod_loader || 'vanilla').charAt(0).toUpperCase() + (instance.mod_loader || 'vanilla').slice(1)}
                 </div>
                 {instance.loader_version && (
                   <div className="metadata-subtext">v{instance.loader_version}</div>
@@ -257,7 +257,7 @@ export default function InstanceDetailView({
 
           <MetadataItem
             label="Instance Type"
-            value={`${instance.instance_type === 'modded' ? '🔧' : '⛏️'} ${instance.instance_type.charAt(0).toUpperCase() + instance.instance_type.slice(1)}`}
+            value={`${(instance.instance_type || 'unknown') === 'modded' ? '🔧' : '⛏️'} ${((instance.instance_type || 'unknown')).charAt(0).toUpperCase() + (instance.instance_type || 'unknown').slice(1)}`}
           />
 
           <MetadataItem

@@ -11,17 +11,17 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response)
     const query = `
       SELECT instance_folder_id
       FROM favorites
-      WHERE user_uuid = $1
+      WHERE user_uuid = ?
       ORDER BY created_at DESC;
     `;
 
     const result = await pool.query(query, [req.user?.uuid]);
-    const favoriteIds = result.rows.map((row: any) => row.instance_folder_id);
+    const favoriteIds = (result.rows || []).map((row: any) => row.instance_folder_id);
 
     res.json({ favorites: favoriteIds });
-  } catch (error) {
-    console.error('Error fetching favorites:', error);
-    res.status(500).json({ error: 'Internal server error' });
+  } catch (error: any) {
+    console.error('❌ [GET /favorites] Error:', error.message || error);
+    res.status(500).json({ error: 'Failed to fetch favorites' });
   }
 });
 
@@ -35,26 +35,24 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
   }
 
   try {
+    const id = randomUUID();
     const query = `
-      INSERT INTO favorites (id, user_uuid, instance_folder_id)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (user_uuid, instance_folder_id) DO NOTHING
-      RETURNING id;
+      INSERT OR IGNORE INTO favorites (id, user_uuid, instance_folder_id)
+      VALUES (?, ?, ?);
     `;
 
-    const result = await pool.query(query, [
-      randomUUID(),
-      req.user?.uuid,
-      instanceFolderId
-    ]);
+    await pool.query(query, [id, req.user?.uuid, instanceFolderId]);
 
+    const result = await pool.query('SELECT id FROM favorites WHERE id = ?', [id]);
+
+    const recordId = (result.rows && result.rows[0]?.id) || id;
     res.status(201).json({
       success: true,
-      id: result.rows[0]?.id
+      id: recordId
     });
-  } catch (error) {
-    console.error('Error adding favorite:', error);
-    res.status(500).json({ error: 'Internal server error' });
+  } catch (error: any) {
+    console.error('❌ [POST /favorites] Error:', error.message || error);
+    res.status(500).json({ error: 'Failed to add favorite' });
   }
 });
 
@@ -65,15 +63,15 @@ router.delete('/:instanceFolderId', authMiddleware, async (req: AuthenticatedReq
   try {
     const query = `
       DELETE FROM favorites
-      WHERE user_uuid = $1 AND instance_folder_id = $2;
+      WHERE user_uuid = ? AND instance_folder_id = ?;
     `;
 
     await pool.query(query, [req.user?.uuid, instanceFolderId]);
 
     res.json({ success: true });
-  } catch (error) {
-    console.error('Error removing favorite:', error);
-    res.status(500).json({ error: 'Internal server error' });
+  } catch (error: any) {
+    console.error('❌ [DELETE /favorites] Error:', error.message || error);
+    res.status(500).json({ error: 'Failed to remove favorite' });
   }
 });
 

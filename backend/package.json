@@ -13,11 +13,14 @@
     "test:coverage": "vitest --coverage"
   },
   "dependencies": {
+    "apollo-server-express": "^3.13.0",
     "axios": "^1.6.1",
     "better-sqlite3": "^11.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "graphql": "^16.13.1",
+    "graphql-tools": "^9.0.26",
     "jsonwebtoken": "^9.0.0",
     "socket.io": "^4.7.2",
     "uuid": "^9.0.1"

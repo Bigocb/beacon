@@ -149,4 +149,74 @@ router.delete(
   }
 );
 
+// POST /saves/batch - Bulk upsert saves from scanner
+router.post('/batch', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  const { saves } = req.body;
+
+  if (!Array.isArray(saves) || saves.length === 0) {
+    return res.status(400).json({ error: 'saves array required' });
+  }
+
+  try {
+    const inserted = [];
+    const updated = [];
+
+    for (const save of saves) {
+      const checkQuery = 'SELECT id FROM saves WHERE id = ? AND user_uuid = ?';
+      const existing = await pool.query(checkQuery, [save.id, req.user?.uuid]);
+
+      if (existing.rows && existing.rows.length > 0) {
+        // Update existing
+        const updateQuery = `
+          UPDATE saves SET
+            world_name = ?, version = ?, game_mode = ?, difficulty = ?,
+            seed = ?, play_time_ticks = ?, spawn_x = ?, spawn_y = ?, spawn_z = ?,
+            health = ?, hunger = ?, level = ?, xp = ?, food_eaten = ?,
+            beds_slept_in = ?, deaths = ?, blocks_mined = ?, blocks_placed = ?,
+            items_crafted = ?, mobs_killed = ?, damage_taken = ?, updated_at = NOW()
+          WHERE id = ? AND user_uuid = ?
+        `;
+        await pool.query(updateQuery, [
+          save.world_name, save.version, save.game_mode, save.difficulty,
+          save.seed, save.play_time_ticks, save.spawn_x, save.spawn_y, save.spawn_z,
+          save.health || null, save.hunger || null, save.level || null, save.xp || null,
+          save.food_eaten || null, save.beds_slept_in || null, save.deaths || null,
+          save.blocks_mined || null, save.blocks_placed || null, save.items_crafted || null,
+          save.mobs_killed || null, save.damage_taken || null, save.id, req.user?.uuid,
+        ]);
+        updated.push(save.id);
+      } else {
+        // Insert new
+        const insertQuery = `
+          INSERT INTO saves (
+            id, user_uuid, folder_id, world_name, file_path, version, game_mode,
+            difficulty, seed, play_time_ticks, spawn_x, spawn_y, spawn_z,
+            health, hunger, level, xp, food_eaten, beds_slept_in, deaths,
+            blocks_mined, blocks_placed, items_crafted, mobs_killed, damage_taken
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+        await pool.query(insertQuery, [
+          save.id, req.user?.uuid, save.folder_id || null, save.world_name, save.file_path,
+          save.version, save.game_mode, save.difficulty, save.seed, save.play_time_ticks,
+          save.spawn_x, save.spawn_y, save.spawn_z, save.health || null, save.hunger || null,
+          save.level || null, save.xp || null, save.food_eaten || null, save.beds_slept_in || null,
+          save.deaths || null, save.blocks_mined || null, save.blocks_placed || null,
+          save.items_crafted || null, save.mobs_killed || null, save.damage_taken || null,
+        ]);
+        inserted.push(save.id);
+      }
+    }
+
+    res.json({
+      message: 'Saves synced',
+      inserted: inserted.length,
+      updated: updated.length,
+    });
+  } catch (error: any) {
+    console.error('❌ Error batch syncing saves:', error.message || error);
+    console.error('Stack:', error.stack);
+    res.status(500).json({ error: error.message || 'Failed to sync saves' });
+  }
+});
+
 export default router;

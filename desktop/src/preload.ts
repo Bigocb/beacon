@@ -26,20 +26,20 @@ const api = {
   // Scanner
   scanner: {
     detectAccounts: () => ipcRenderer.invoke('scanner:detectAccounts'),
-    scanSaves: (userUuid: string) => ipcRenderer.invoke('scanner:scanSaves', userUuid),
+    scanSaves: (userUuid: string, token?: string) => ipcRenderer.invoke('scanner:scanSaves', userUuid, token),
     getSaves: (userUuid: string, token?: string) => ipcRenderer.invoke('scanner:getSaves', userUuid, token),
-    updateSave: (saveId: string, updates: any) =>
-      ipcRenderer.invoke('scanner:updateSave', saveId, updates),
+    updateSave: (saveId: string, updates: any, token?: string) =>
+      ipcRenderer.invoke('scanner:updateSave', saveId, updates, token),
     // Note: Folder management now uses backend API via FolderManager component
     // These are kept for backward compatibility but should call backend directly
-    scanAllFolders: (userUuid: string) => ipcRenderer.invoke('scanner:scanAllFolders', userUuid),
-    scanFolder: (folderId: string, userUuid: string) => ipcRenderer.invoke('scanner:scanFolder', folderId, userUuid),
+    scanAllFolders: (userUuid: string, token?: string) => ipcRenderer.invoke('scanner:scanAllFolders', userUuid, token),
+    scanFolder: (folderId: string, userUuid: string, token?: string) => ipcRenderer.invoke('scanner:scanFolder', folderId, userUuid, token),
     getInstanceMetadata: (userUuid: string, token?: string) => ipcRenderer.invoke('scanner:getInstanceMetadata', userUuid, token),
     // Batch scanning: discover instances in a parent folder
     discoverInstances: (parentFolderPath: string) => ipcRenderer.invoke('scanner:discoverInstances', parentFolderPath),
     // Batch scan: add and scan all instances in a parent folder
-    batchAddAndScan: (userUuid: string, parentFolderPath: string) =>
-      ipcRenderer.invoke('scanner:batchAddAndScan', userUuid, parentFolderPath),
+    batchAddAndScan: (userUuid: string, parentFolderPath: string, token?: string) =>
+      ipcRenderer.invoke('scanner:batchAddAndScan', userUuid, parentFolderPath, token),
     // Launch instance
     launchInstance: (launcherType: string, instancePath: string, instanceName: string) =>
       ipcRenderer.invoke('scanner:launchInstance', launcherType, instancePath, instanceName),
@@ -96,11 +96,11 @@ const api = {
 
   // Favorites
   favorites: {
-    getAll: () => ipcRenderer.invoke('favorites:getAll'),
-    add: (instanceFolderId: string) =>
-      ipcRenderer.invoke('favorites:add', { instanceFolderId }),
-    remove: (instanceFolderId: string) =>
-      ipcRenderer.invoke('favorites:remove', { instanceFolderId }),
+    getAll: (token?: string) => ipcRenderer.invoke('favorites:getAll', token),
+    add: (instanceFolderId: string, token?: string) =>
+      ipcRenderer.invoke('favorites:add', { instanceFolderId, token }),
+    remove: (instanceFolderId: string, token?: string) =>
+      ipcRenderer.invoke('favorites:remove', { instanceFolderId, token }),
   },
 
   // Players

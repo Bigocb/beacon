@@ -1,8 +1,12 @@
-import express from 'express';
+import express, { Express } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
+import { graphql, buildSchema } from 'graphql';
+import { typeDefs } from './graphql/schema';
+import { resolvers } from './graphql/resolvers';
+import { authMiddleware, AuthenticatedRequest } from './middleware/auth';
 
 import authRoutes from './api/auth';
 import usersRoutes from './api/users';
@@ -79,9 +83,69 @@ io.on('connection', (socket) => {
 // Export io for use in route handlers
 export { io };
 
+// Build GraphQL schema from type definitions string
+let schema: any;
+try {
+  const typeDefsString = typeDefs.loc?.source.body || '';
+  schema = buildSchema(typeDefsString);
+} catch (err) {
+  console.error('Failed to build GraphQL schema:', err);
+  process.exit(1);
+}
+
+// Setup GraphQL endpoint
+app.post('/graphql', authMiddleware, express.json(), async (req: any, res: any) => {
+  const { query, variables } = req.body;
+
+  if (!query) {
+    return res.status(400).json({ errors: [{ message: 'No query provided' }] });
+  }
+
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const context = { req: authReq };
+
+    // Wrap resolvers to ensure context is always passed
+    const wrappedQuery = Object.entries(resolvers.Query as any).reduce((acc: any, [key, value]) => {
+      acc[key] = (parent: any, args: any) => {
+        return (value as any)(parent, args, context);
+      };
+      return acc;
+    }, {});
+
+    const wrappedMutation = Object.entries(resolvers.Mutation as any).reduce((acc: any, [key, value]) => {
+      acc[key] = (parent: any, args: any) => {
+        return (value as any)(parent, args, context);
+      };
+      return acc;
+    }, {});
+
+    // Combine wrapped resolvers into root value
+    const rootValue = { ...wrappedQuery, ...wrappedMutation };
+
+    const result = await graphql({
+      schema,
+      source: query,
+      variableValues: variables,
+      rootValue,
+      contextValue: context
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('GraphQL error:', error);
+    res.status(500).json({ errors: [{ message: error.message }] });
+  }
+});
+
+app.get('/graphql', (req, res) => {
+  res.json({ message: 'GraphQL endpoint at POST /graphql' });
+});
+
 // Start server
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Database: ${process.env.DB_NAME || 'minecraft_tracker'}`);
+  console.log(`📡 GraphQL available at http://localhost:${PORT}/graphql`);
 });

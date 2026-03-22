@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import styles from './FolderManager.module.css';
 
 interface SaveFolder {
@@ -45,15 +46,26 @@ export const FolderManager: React.FC<FolderManagerProps> = ({
     setError(null);
     try {
       const token = localStorage.getItem('minecraft_tracker_auth_token');
-      const response = await fetch('http://localhost:3000/folders', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
 
-      if (response.ok) {
-        const data = await response.json();
-        setFolders(data.folders || []);
+      const query = `
+        query {
+          folders {
+            id
+            user_uuid
+            folder_path
+            display_name
+            created_at
+          }
+        }
+      `;
+
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const response = await axios.post(`http://localhost:3000/graphql`, { query }, { headers });
+
+      if (response.data.errors) {
+        setError(response.data.errors[0]?.message || 'Failed to load folders');
       } else {
-        setError('Failed to load folders');
+        setFolders(response.data.data?.folders || []);
       }
     } catch (err: any) {
       setError(err.message);
@@ -71,22 +83,32 @@ export const FolderManager: React.FC<FolderManagerProps> = ({
       setError(null);
 
       const token = localStorage.getItem('minecraft_tracker_auth_token');
-      const response = await fetch('http://localhost:3000/folders', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ folder_path: folderPath }),
-      });
+      const displayName = folderPath.split('\\').pop() || folderPath;
 
-      if (response.ok) {
-        const data = await response.json();
-        setFolders([...folders, data.folder]);
-        onFoldersChanged?.();
+      const mutation = `
+        mutation createNewFolder($path: String!, $name: String!) {
+          createFolder(folder_path: $path, display_name: $name) {
+            id
+            user_uuid
+            folder_path
+            display_name
+            created_at
+          }
+        }
+      `;
+
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const response = await axios.post(`http://localhost:3000/graphql`, {
+        query: mutation,
+        variables: { path: folderPath, name: displayName }
+      }, { headers });
+
+      if (response.data.errors) {
+        setError(response.data.errors[0]?.message || 'Failed to add folder');
       } else {
-        const errorData = await response.json();
-        setError(errorData.error || 'Failed to add folder');
+        const newFolder = response.data.data?.createFolder;
+        setFolders([...folders, newFolder]);
+        onFoldersChanged?.();
       }
     } catch (err: any) {
       setError(err.message);
@@ -103,17 +125,24 @@ export const FolderManager: React.FC<FolderManagerProps> = ({
       setError(null);
 
       const token = localStorage.getItem('minecraft_tracker_auth_token');
-      const response = await fetch(`http://localhost:3000/folders/${folderId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
 
-      if (response.ok) {
+      const mutation = `
+        mutation deleteFolder($id: String!) {
+          deleteFolder(id: $id)
+        }
+      `;
+
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const response = await axios.post(`http://localhost:3000/graphql`, {
+        query: mutation,
+        variables: { id: folderId }
+      }, { headers });
+
+      if (response.data.errors) {
+        setError(response.data.errors[0]?.message || 'Failed to remove folder');
+      } else {
         setFolders(folders.filter((f) => f.id !== folderId));
         onFoldersChanged?.();
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || 'Failed to remove folder');
       }
     } catch (err: any) {
       setError(err.message);
@@ -126,7 +155,8 @@ export const FolderManager: React.FC<FolderManagerProps> = ({
     setIsScanning(true);
     setError(null);
     try {
-      const result = await window.api.scanner.scanAllFolders(userUuid);
+      const token = localStorage.getItem('minecraft_tracker_auth_token');
+      const result = await window.api.scanner.scanAllFolders(userUuid, token);
       if (result.success) {
         alert(`Found ${result.saves.length} save(s)`);
         onFoldersChanged?.();
@@ -172,7 +202,8 @@ export const FolderManager: React.FC<FolderManagerProps> = ({
     setIsScanning(true);
     setError(null);
     try {
-      const result = await window.api.scanner.batchAddAndScan(userUuid, selectedParentFolder);
+      const token = localStorage.getItem('minecraft_tracker_auth_token');
+      const result = await window.api.scanner.batchAddAndScan(userUuid, selectedParentFolder, token);
       if (result.success) {
         alert(
           `✅ Batch scan complete!\n\nAdded: ${result.instancesAdded} instance(s)\nFound: ${result.savesFound} save(s)`

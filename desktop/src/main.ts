@@ -2,8 +2,6 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
 import fs from 'fs/promises';
 import dotenv from 'dotenv';
-import { initializeDatabase } from './db/sqlite';
-import db from './db/sqlite';
 import { registerIPC as registerAuthIPC, restoreAuthFromDatabase } from './auth/oauth';
 import { registerScannerIPC } from './scanner/ipc';
 import { registerSyncIPC } from './sync/ipc';
@@ -48,14 +46,6 @@ async function createWindow() {
 }
 
 app.on('ready', async () => {
-  // Initialize SQLite database (gracefully handle failures)
-  try {
-    initializeDatabase();
-  } catch (error) {
-    console.error('Failed to initialize database:', error);
-    // Continue anyway - app can work without local DB if needed
-  }
-
   // Restore user auth from database (for app restart persistence)
   try {
     restoreAuthFromDatabase();
@@ -162,48 +152,63 @@ app.on('ready', async () => {
     return result.filePaths[0];
   });
 
-  // Favorites handlers
-  ipcMain.handle('favorites:getAll', async (event) => {
+  // Favorites handlers - call backend GraphQL API
+  const axios = require('axios').default;
+
+  // GraphQL query helper for favorites
+  async function graphqlQuery(query: string, variables?: any, token?: string) {
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const response = await axios.post(`http://localhost:3000/graphql`, { query, variables }, { headers });
+    if (response.data.errors) {
+      throw new Error(response.data.errors[0].message);
+    }
+    return response.data.data;
+  }
+
+  ipcMain.handle('favorites:getAll', async (event, token?: string) => {
     try {
-      const rows = db.prepare(`
-        SELECT instance_folder_id
-        FROM favorites
-        ORDER BY created_at DESC
-      `).all();
-      const favoriteIds = rows?.map((row: any) => row.instance_folder_id) || [];
-      return { success: true, favorites: favoriteIds };
+      const query = `
+        query {
+          getFavorites
+        }
+      `;
+      const result = await graphqlQuery(query, {}, token);
+      return { success: true, favorites: result.getFavorites || [] };
     } catch (error: any) {
-      console.error('Error fetching favorites:', error);
+      console.error('❌ [favorites:getAll] Error:', error.message);
       return { success: false, error: error.message };
     }
   });
 
-  ipcMain.handle('favorites:add', async (event, { instanceFolderId }: { instanceFolderId: string }) => {
+  ipcMain.handle('favorites:add', async (event, { instanceFolderId, token }: { instanceFolderId: string; token?: string }) => {
     try {
       if (!instanceFolderId) {
         return { success: false, error: 'instanceFolderId is required' };
       }
-
-      const id = `fav_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      db.prepare(
-        `INSERT OR IGNORE INTO favorites (id, instance_folder_id, created_at)
-         VALUES (?, ?, datetime('now'))`
-      ).run(id, instanceFolderId);
-      return { success: true, id };
+      const mutation = `
+        mutation addFav($id: String!) {
+          addFavorite(instanceFolderId: $id)
+        }
+      `;
+      const result = await graphqlQuery(mutation, { id: instanceFolderId }, token);
+      return { success: true, added: result.addFavorite };
     } catch (error: any) {
-      console.error('Error adding favorite:', error);
+      console.error('❌ [favorites:add] Error:', error.message);
       return { success: false, error: error.message };
     }
   });
 
-  ipcMain.handle('favorites:remove', async (event, { instanceFolderId }: { instanceFolderId: string }) => {
+  ipcMain.handle('favorites:remove', async (event, { instanceFolderId, token }: { instanceFolderId: string; token?: string }) => {
     try {
-      db.prepare(
-        `DELETE FROM favorites WHERE instance_folder_id = ?`
-      ).run(instanceFolderId);
-      return { success: true };
+      const mutation = `
+        mutation removeFav($id: String!) {
+          removeFavorite(instanceFolderId: $id)
+        }
+      `;
+      const result = await graphqlQuery(mutation, { id: instanceFolderId }, token);
+      return { success: true, removed: result.removeFavorite };
     } catch (error: any) {
-      console.error('Error removing favorite:', error);
+      console.error('❌ [favorites:remove] Error:', error.message);
       return { success: false, error: error.message };
     }
   });
