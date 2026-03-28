@@ -616,15 +616,12 @@ export const SaveAnalyticsPage: React.FC<SaveAnalyticsPageProps> = ({ saveData, 
         const dbEvents = await timelineService.fetchTimelineEvents(saveData.id, selectedPlayerUUID);
         console.log('✅ [Frontend] DB events loaded:', dbEvents.length);
 
-        // Generate events from advancement/exploration data
+        // Generate game progress events from advancements, exploration, and statistics
         const gameEvents = generateGameProgressEvents(advancementData, explorationData, statisticsData);
-        console.log('✅ [Frontend] Game events generated:', gameEvents.length);
+        console.log('✅ [Frontend] Game progress events generated:', gameEvents.length);
 
-        // Combine all events and sort by timestamp
-        const allEvents = [...dbEvents, ...gameEvents].sort(
-          (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
-
+        // Combine and sort all events
+        const allEvents = [...dbEvents, ...gameEvents].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
         console.log('✅ [Frontend] Total timeline events:', allEvents.length);
         setTimelineEvents(allEvents);
       } catch (error) {
@@ -636,7 +633,7 @@ export const SaveAnalyticsPage: React.FC<SaveAnalyticsPageProps> = ({ saveData, 
     };
 
     loadTimeline();
-  }, [saveData?.id, activeTab, advancementData, explorationData, statisticsData, selectedPlayerUUID]);
+  }, [saveData?.id, activeTab, selectedPlayerUUID, advancementData, explorationData, statisticsData]);
 
   // Handle note creation (associated with selected player)
   const handleCreateNote = async (noteData: Omit<NoteUI, 'id'>) => {
@@ -724,36 +721,6 @@ export const SaveAnalyticsPage: React.FC<SaveAnalyticsPageProps> = ({ saveData, 
     }
   };
 
-  // Load timeline events
-  useEffect(() => {
-    const loadTimeline = async () => {
-      if (!saveData?.id || activeTab !== 'timeline') return;
-
-      setLoadingTimeline(true);
-      try {
-        // Build timeline from notes (milestones and snapshots support to be added)
-        const events: TimelineEvent[] = notes.map(note => ({
-          id: `note-${note.id}`,
-          timestamp: note.timestamp,
-          title: note.title || `${note.type.charAt(0).toUpperCase() + note.type.slice(1)}`,
-          description: note.content.substring(0, 150) + (note.content.length > 150 ? '...' : ''),
-          type: note.type === 'general' ? 'note' : (note.type as any),
-          emoji: note.type === 'general' ? '📝' : note.type === 'milestone' ? '🎯' : note.type === 'achievement' ? '⭐' : '⚠️',
-          color: note.type === 'general' ? '#60a5fa' : note.type === 'milestone' ? '#fbbf24' : note.type === 'achievement' ? '#4ade80' : '#ef4444',
-        }));
-
-        // Sort by date (descending)
-        events.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-        setTimelineEvents(events);
-      } catch (error) {
-        console.error('Error loading timeline:', error);
-      } finally {
-        setLoadingTimeline(false);
-      }
-    };
-
-    loadTimeline();
-  }, [saveData?.id, activeTab, notes]);
 
   // Manual refresh function for player data
   const handleRefreshPlayerData = useCallback(async () => {
