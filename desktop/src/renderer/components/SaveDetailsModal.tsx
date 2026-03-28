@@ -10,6 +10,7 @@ interface Save {
   version: string;
   game_mode: string;
   path?: string;
+  file_path?: string;
   difficulty?: number;
   seed?: number;
   spawn_x?: number;
@@ -18,6 +19,12 @@ interface Save {
   notes?: string;
   status?: string;
   custom_tags?: string[];
+  health?: number;
+  hunger?: number;
+  level?: number;
+  xp?: number;
+  last_played?: string;
+  play_time_ticks?: number;
 }
 
 interface SaveDetailsModalProps {
@@ -58,7 +65,7 @@ export default function SaveDetailsModal({ save, onClose, onSave }: SaveDetailsM
   // Load player list on mount
   useEffect(() => {
     loadPlayers();
-  }, [save.path]);
+  }, [save.path, save.file_path]);
 
   // Load player data when UUID changes
   useEffect(() => {
@@ -68,11 +75,13 @@ export default function SaveDetailsModal({ save, onClose, onSave }: SaveDetailsM
   }, [selectedPlayerUUID, activeTab]);
 
   const loadPlayers = async () => {
-    if (!save.path) return;
+    // Use either path or file_path from the save object
+    const savePath = save.path || save.file_path;
+    if (!savePath) return;
 
     setLoadingPlayers(true);
     try {
-      const uuids = await getPlayerList(save.path);
+      const uuids = await getPlayerList(savePath);
 
       if (uuids.length === 0) {
         setAvailablePlayers([]);

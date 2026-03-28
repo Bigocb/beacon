@@ -38,7 +38,7 @@ export const typeDefs = gql`
     version: String
     game_mode: String
     difficulty: Int
-    seed: Int
+    seed: String
     play_time_ticks: Int
     spawn_x: Int
     spawn_y: Int
@@ -56,6 +56,13 @@ export const typeDefs = gql`
     mobs_killed: Int
     damage_taken: Float
     last_played: String
+    file_path: String
+    instance_name: String
+    mod_loader: String
+    loader_version: String
+    game_version: String
+    instance_type: String
+    launcher: String
     created_at: String!
     updated_at: String!
   }
@@ -67,6 +74,53 @@ export const typeDefs = gql`
     hunger: Int
     level: Int
     xp: Float
+  }
+
+  type Tag {
+    id: String!
+    user_uuid: String!
+    name: String!
+    color: String
+    created_at: String!
+  }
+
+  type Note {
+    id: String!
+    save_id: String!
+    title: String
+    content: String!
+    note_type: String!
+    timestamp: String!
+    created_at: String!
+    updated_at: String!
+    deleted_at: String
+    tags: [Tag!]!
+  }
+
+  type Milestone {
+    id: String!
+    save_id: String!
+    name: String!
+    description: String
+    target_play_time_ticks: Int
+    achieved_at: String
+    position: Int!
+    created_at: String!
+    updated_at: String!
+  }
+
+  type WorldMetadata {
+    save_id: String!
+    description: String
+    is_favorite: Boolean!
+    theme_color: String
+    world_type: String
+    modpack_name: String
+    modpack_version: String
+    project_id: String
+    archived_at: String
+    created_at: String!
+    updated_at: String!
   }
 
   type Query {
@@ -89,6 +143,20 @@ export const typeDefs = gql`
 
     # Favorites queries
     getFavorites: [String!]!
+
+    # Tags queries
+    tags: [Tag!]!
+
+    # Notes queries
+    notes(saveId: String!): [Note!]!
+    note(id: String!): Note
+
+    # Milestones queries
+    milestones(saveId: String!): [Milestone!]!
+    milestone(id: String!): Milestone
+
+    # Metadata queries
+    metadata(saveId: String!): WorldMetadata
   }
 
   type SaveConnection {
@@ -110,18 +178,39 @@ export const typeDefs = gql`
     # Manage favorites
     addFavorite(instanceFolderId: String!): Boolean!
     removeFavorite(instanceFolderId: String!): Boolean!
+
+    # Tags mutations
+    createTag(name: String!, color: String): Tag!
+    updateTag(id: String!, name: String, color: String): Tag!
+    deleteTag(id: String!): Boolean!
+
+    # Notes mutations
+    createNote(saveId: String!, data: CreateNoteInput!): Note!
+    updateNote(id: String!, data: UpdateNoteInput!): Note!
+    deleteNote(id: String!): Boolean!
+    addNoteTag(noteId: String!, tagId: String!): Boolean!
+    removeNoteTag(noteId: String!, tagId: String!): Boolean!
+
+    # Milestones mutations
+    createMilestone(saveId: String!, data: CreateMilestoneInput!): Milestone!
+    updateMilestone(id: String!, data: UpdateMilestoneInput!): Milestone!
+    deleteMilestone(id: String!): Boolean!
+
+    # Metadata mutations
+    createMetadata(saveId: String!, data: CreateMetadataInput!): WorldMetadata!
+    updateMetadata(saveId: String!, data: UpdateMetadataInput!): WorldMetadata!
   }
 
   input SaveInput {
     id: String!
-    user_uuid: String!
+    user_uuid: String
     folder_id: String
     world_name: String!
-    file_path: String!
+    file_path: String
     version: String
     game_mode: String
     difficulty: Int
-    seed: Int
+    seed: String
     play_time_ticks: Int
     spawn_x: Int
     spawn_y: Int
@@ -138,6 +227,13 @@ export const typeDefs = gql`
     items_crafted: Int
     mobs_killed: Int
     damage_taken: Float
+    last_played: String
+    instance_name: String
+    mod_loader: String
+    loader_version: String
+    game_version: String
+    instance_type: String
+    launcher: String
   }
 
   input SaveUpdateInput {
@@ -153,5 +249,56 @@ export const typeDefs = gql`
     inserted: Int!
     updated: Int!
     message: String!
+  }
+
+  input CreateNoteInput {
+    title: String
+    content: String!
+    note_type: String
+    timestamp: String!
+    tag_ids: [String!]
+  }
+
+  input UpdateNoteInput {
+    title: String
+    content: String
+    note_type: String
+    timestamp: String
+    tag_ids: [String!]
+  }
+
+  input CreateMilestoneInput {
+    name: String!
+    description: String
+    target_play_time_ticks: Int
+    position: Int
+  }
+
+  input UpdateMilestoneInput {
+    name: String
+    description: String
+    target_play_time_ticks: Int
+    position: Int
+    achieved_at: String
+  }
+
+  input CreateMetadataInput {
+    description: String
+    is_favorite: Boolean
+    theme_color: String
+    world_type: String!
+    modpack_name: String
+    modpack_version: String
+    project_id: String
+  }
+
+  input UpdateMetadataInput {
+    description: String
+    is_favorite: Boolean
+    theme_color: String
+    world_type: String
+    modpack_name: String
+    modpack_version: String
+    project_id: String
   }
 `;

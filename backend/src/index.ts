@@ -3,10 +3,12 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
-import { graphql, buildSchema } from 'graphql';
+import { graphql, buildSchema, execute, parse } from 'graphql';
+import { makeExecutableSchema } from 'graphql-tools';
 import { typeDefs } from './graphql/schema';
 import { resolvers } from './graphql/resolvers';
 import { authMiddleware, AuthenticatedRequest } from './middleware/auth';
+import { initializeDatabase } from './db/init';
 
 import authRoutes from './api/auth';
 import usersRoutes from './api/users';
@@ -83,13 +85,51 @@ io.on('connection', (socket) => {
 // Export io for use in route handlers
 export { io };
 
-// Build GraphQL schema from type definitions string
+// Build GraphQL schema with executable resolvers
 let schema: any;
 try {
   const typeDefsString = typeDefs.loc?.source.body || '';
-  schema = buildSchema(typeDefsString);
+
+  // Debug: Check if file_path is in the schema string
+  console.log(`📋 [Schema] typeDefsString length: ${typeDefsString.length} chars`);
+  if (typeDefsString.includes('file_path')) {
+    console.log('✅ [Schema] file_path found in type defs');
+  } else {
+    console.warn('⚠️  [Schema] file_path NOT found in type defs!');
+    console.warn('First 500 chars:', typeDefsString.substring(0, 500));
+  }
+
+  // Wrap resolvers to inject context
+  const wrappedResolvers = {
+    Query: Object.entries(resolvers.Query as any).reduce((acc: any, [key, value]) => {
+      acc[key] = (parent: any, args: any, context: any, info: any) => {
+        return (value as any)(parent, args, context);
+      };
+      return acc;
+    }, {}),
+    Mutation: Object.entries(resolvers.Mutation as any).reduce((acc: any, [key, value]) => {
+      acc[key] = (parent: any, args: any, context: any, info: any) => {
+        return (value as any)(parent, args, context);
+      };
+      return acc;
+    }, {}),
+  };
+
+  console.log('🔨 [Schema] Building executable schema...');
+  schema = makeExecutableSchema({
+    typeDefs: typeDefsString,
+    resolvers: wrappedResolvers,
+  });
+  console.log('✅ [Schema] Schema built successfully');
+
+  // Debug: Check Save type fields
+  const SaveType = schema.getType('Save');
+  if (SaveType) {
+    const fields = SaveType.getFields ? SaveType.getFields() : SaveType._fields;
+    console.log('📝 [Schema] Save type fields:', Object.keys(fields || {}));
+  }
 } catch (err) {
-  console.error('Failed to build GraphQL schema:', err);
+  console.error('❌ Failed to build GraphQL schema:', err);
   process.exit(1);
 }
 
@@ -105,29 +145,11 @@ app.post('/graphql', authMiddleware, express.json(), async (req: any, res: any) 
     const authReq = req as AuthenticatedRequest;
     const context = { req: authReq };
 
-    // Wrap resolvers to ensure context is always passed
-    const wrappedQuery = Object.entries(resolvers.Query as any).reduce((acc: any, [key, value]) => {
-      acc[key] = (parent: any, args: any) => {
-        return (value as any)(parent, args, context);
-      };
-      return acc;
-    }, {});
-
-    const wrappedMutation = Object.entries(resolvers.Mutation as any).reduce((acc: any, [key, value]) => {
-      acc[key] = (parent: any, args: any) => {
-        return (value as any)(parent, args, context);
-      };
-      return acc;
-    }, {});
-
-    // Combine wrapped resolvers into root value
-    const rootValue = { ...wrappedQuery, ...wrappedMutation };
-
+    // Execute GraphQL query with proper context injection
     const result = await graphql({
       schema,
       source: query,
       variableValues: variables,
-      rootValue,
       contextValue: context
     });
 
@@ -143,9 +165,18 @@ app.get('/graphql', (req, res) => {
 });
 
 // Start server
-const PORT = process.env.PORT || 3000;
-httpServer.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Database: ${process.env.DB_NAME || 'minecraft_tracker'}`);
-  console.log(`📡 GraphQL available at http://localhost:${PORT}/graphql`);
-});
+(async () => {
+  try {
+    await initializeDatabase();
+
+    const PORT = process.env.PORT || 3000;
+    httpServer.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`📊 Database: ${process.env.DB_NAME || 'minecraft_tracker'}`);
+      console.log(`📡 GraphQL available at http://localhost:${PORT}/graphql`);
+    });
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+})();

@@ -40,7 +40,7 @@ export function registerScannerIPC() {
       // Upload scanned saves to backend via GraphQL
       // Use custom serializer to handle BigInt values in file stats
       const savesJson = JSON.parse(JSON.stringify(saves, (key, value) =>
-        typeof value === 'bigint' ? Number(value) : value
+        typeof value === 'bigint' ? value.toString() : value
       ));
 
       const mutation = `
@@ -65,11 +65,35 @@ export function registerScannerIPC() {
   ipcMain.handle('scanner:getSaves', async (event, userUuid: string, token?: string) => {
     try {
       // Fetch from backend API instead of local database
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const response = await axios.get(`http://localhost:3001/saves`, {
-        headers
-      });
-      return { success: true, saves: response.data.saves || [], savesCount: response.data.saves?.length || 0 };
+      const query = `
+        query {
+          saves(limit: 100) {
+            saves {
+              id
+              folder_id
+              world_name
+              version
+              game_mode
+              difficulty
+              file_path
+              seed
+              spawn_x
+              spawn_y
+              spawn_z
+              play_time_ticks
+              last_played
+              health
+              hunger
+              level
+              xp
+            }
+            total
+          }
+        }
+      `;
+      const result = await graphqlQuery(query, {}, token);
+      const saves = result.saves?.saves || [];
+      return { success: true, saves, savesCount: saves.length };
     } catch (error: any) {
       console.error('❌ [getSaves] Error fetching saves:', error.message);
       // Fallback to empty array if backend is unavailable
@@ -79,14 +103,20 @@ export function registerScannerIPC() {
 
   ipcMain.handle('scanner:updateSave', async (event, saveId: string, updates: any, token?: string) => {
     try {
-      // Update save via backend API
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const response = await axios.patch(`http://localhost:3001/saves/${saveId}`, updates, {
-        headers
-      });
+      // Update save via backend GraphQL API
+      const mutation = `
+        mutation updateSave($id: String!, $data: SaveUpdateInput!) {
+          updateSave(id: $id, data: $data) {
+            id
+            world_name
+            version
+          }
+        }
+      `;
+      const result = await graphqlQuery(mutation, { id: saveId, data: updates }, token);
 
       console.log(`✅ [updateSave] Save updated on backend`);
-      return { success: true, save: response.data };
+      return { success: true, save: result.updateSave };
     } catch (error: any) {
       console.error('❌ [updateSave] Error updating save:', error.message);
       return { success: false, error: error.message };
@@ -134,10 +164,18 @@ export function registerScannerIPC() {
     try {
       console.log('🔄 Starting scanAllFolders for user:', userUuid);
 
-      // Fetch configured folders from backend API
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const foldersResponse = await axios.get(`http://localhost:3001/folders`, { headers });
-      const folders = foldersResponse.data.folders || [];
+      // Fetch configured folders from backend GraphQL API
+      const foldersQuery = `
+        query {
+          folders {
+            id
+            folder_path
+            display_name
+          }
+        }
+      `;
+      const foldersResult = await graphqlQuery(foldersQuery, {}, token);
+      const folders = foldersResult.folders || [];
 
       console.log(`📁 Found ${folders.length} folders to scan`);
       if (folders.length > 0) {
@@ -154,7 +192,7 @@ export function registerScannerIPC() {
       // Upload scanned saves to backend via GraphQL
       // Use custom serializer to handle BigInt values in file stats
       const savesJson = JSON.parse(JSON.stringify(saves, (key, value) =>
-        typeof value === 'bigint' ? Number(value) : value
+        typeof value === 'bigint' ? value.toString() : value
       ));
 
       const mutation = `
@@ -181,10 +219,18 @@ export function registerScannerIPC() {
     try {
       console.log(`🔄 Starting scanFolder for folder: ${folderId}, user: ${userUuid}`);
 
-      // Get folder path from backend API
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const foldersResponse = await axios.get(`http://localhost:3001/folders`, { headers });
-      const folders = foldersResponse.data.folders || [];
+      // Get folder path from backend GraphQL API
+      const foldersQuery = `
+        query {
+          folders {
+            id
+            folder_path
+            display_name
+          }
+        }
+      `;
+      const foldersResult = await graphqlQuery(foldersQuery, {}, token);
+      const folders = foldersResult.folders || [];
       const folder = folders.find((f: any) => f.id === folderId);
 
       if (!folder) {
@@ -228,17 +274,23 @@ export function registerScannerIPC() {
         });
       }
 
-      // Upload scanned saves to backend
+      // Upload scanned saves to backend via GraphQL
       // Use custom serializer to handle BigInt values in file stats
       const savesJson = JSON.parse(JSON.stringify(saves, (key, value) =>
-        typeof value === 'bigint' ? Number(value) : value
+        typeof value === 'bigint' ? value.toString() : value
       ));
-      const batchResponse = await axios.post(`http://localhost:3001/saves/batch`, { saves: savesJson }, {
-        headers
-      });
-
-      console.log(`✅ Backend response:`, batchResponse.data);
-      return { success: true, saves: batchResponse.data || savesJson };
+      const mutation = `
+        mutation batchUpsert($saves: [SaveInput!]!) {
+          batchUpsertSaves(saves: $saves) {
+            inserted
+            updated
+            message
+          }
+        }
+      `;
+      const result = await graphqlQuery(mutation, { saves: savesJson }, token);
+      console.log(`✅ Backend response:`, result.batchUpsertSaves);
+      return { success: true, saves: result.batchUpsertSaves || savesJson };
     } catch (error: any) {
       console.error('❌ [scanFolder] Error:', error.message);
       return { success: false, error: error.message };
@@ -264,6 +316,7 @@ export function registerScannerIPC() {
 
       // Discover all instances in the parent folder
       const instances = discoverInstancesInFolder(parentFolderPath);
+      console.log(`🔍 Discovered instances:`, JSON.stringify(instances, null, 2));
 
       if (instances.length === 0) {
         return { success: false, error: 'No Minecraft instances found in this folder' };
@@ -271,18 +324,27 @@ export function registerScannerIPC() {
 
       console.log(`\n➕ Adding ${instances.length} instance(s) via backend API...`);
 
-      // Add all instances as save folders via backend API
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      // Add all instances as save folders via backend GraphQL API
       const addedFolders: Array<{ id: string; path: string; name: string }> = [];
 
       for (const instance of instances) {
         try {
-          const folderResponse = await axios.post(`http://localhost:3001/folders`, {
+          const mutation = `
+            mutation createFolder($folder_path: String!, $display_name: String!) {
+              createFolder(folder_path: $folder_path, display_name: $display_name) {
+                id
+                folder_path
+                display_name
+              }
+            }
+          `;
+          console.log(`📤 Creating folder with vars:`, { folder_path: instance.path, display_name: instance.name });
+          const result = await graphqlQuery(mutation, {
             folder_path: instance.path,
             display_name: instance.name
-          }, { headers });
+          }, token);
 
-          const folder = folderResponse.data.folder;
+          const folder = result.createFolder;
           addedFolders.push({ id: folder.id, path: folder.folder_path, name: folder.display_name });
           console.log(`  ✓ Added: ${instance.name}`);
         } catch (error) {
@@ -292,9 +354,18 @@ export function registerScannerIPC() {
 
       console.log(`\n🔄 Scanning saves for all instances...`);
 
-      // Fetch all folders for this user (including newly added ones)
-      const foldersResponse = await axios.get(`http://localhost:3001/folders`, { headers });
-      const folders = foldersResponse.data.folders || [];
+      // Fetch all folders for this user (including newly added ones) from backend GraphQL API
+      const foldersQuery = `
+        query {
+          folders {
+            id
+            folder_path
+            display_name
+          }
+        }
+      `;
+      const foldersResult = await graphqlQuery(foldersQuery, {}, token);
+      const folders = foldersResult.folders || [];
 
       // Scan all folders for saves
       const saves = await scanMinecraftSavesFromFolders(
@@ -302,15 +373,21 @@ export function registerScannerIPC() {
         folders.map((f: any) => ({ id: f.id, path: f.folder_path }))
       );
 
-      // Upload scanned saves to backend
+      // Upload scanned saves to backend via GraphQL
       // Use custom serializer to handle BigInt values in file stats
       const savesJson = JSON.parse(JSON.stringify(saves, (key, value) =>
-        typeof value === 'bigint' ? Number(value) : value
+        typeof value === 'bigint' ? value.toString() : value
       ));
-      const batchResponse = await axios.post(`http://localhost:3001/saves/batch`, { saves: savesJson }, {
-        headers
-      });
-
+      const mutation = `
+        mutation batchUpsert($saves: [SaveInput!]!) {
+          batchUpsertSaves(saves: $saves) {
+            inserted
+            updated
+            message
+          }
+        }
+      `;
+      const result = await graphqlQuery(mutation, { saves: savesJson }, token);
       console.log(`\n✅ Batch scan complete! Added ${addedFolders.length} instance(s) and found ${saves.length} save(s)`);
 
       return {
