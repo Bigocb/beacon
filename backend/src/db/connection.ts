@@ -56,8 +56,11 @@ const pool = {
         const rows = stmt.all(...(params || []));
         return { rows };
       }
-    } catch (error) {
-      console.error('❌ [Database] Query error:', error);
+    } catch (error: any) {
+      // Don't log duplicate column errors - they're expected during migrations
+      if (!error.message?.includes('duplicate column')) {
+        console.error('❌ [Database] Query error:', error);
+      }
       throw error;
     }
   },

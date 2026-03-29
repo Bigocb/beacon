@@ -160,17 +160,18 @@ export async function initializeDatabase() {
       { table: 'saves', column: 'launcher', type: 'TEXT' },
     ];
 
+    // Add migration columns (skip if they already exist)
     for (const { table, column, type } of columnsToAdd) {
       try {
-        // Try to add the column if it doesn't exist
-        await pool.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${type};`).catch((err: any) => {
-          // Column might already exist, which is fine
-          if (!err.message?.includes('duplicate column')) {
-            throw err;
-          }
-        });
-      } catch (err) {
-        // Column likely already exists, which is fine
+        await pool.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${type};`);
+        console.log(`  ✅ Added column ${table}.${column}`);
+      } catch (err: any) {
+        // Column already exists, which is fine during migration
+        if (err.message?.includes('duplicate column')) {
+          console.log(`  ℹ️ Column ${table}.${column} already exists`);
+        } else {
+          throw err;
+        }
       }
     }
 
