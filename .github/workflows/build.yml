@@ -18,20 +18,13 @@ jobs:
           node-version: '18'
 
       - name: Install dependencies
-        run: npm install --include-workspace-root
-
-      - name: Install desktop dependencies explicitly
-        working-directory: desktop
-        run: npm install
+        run: npm ci --prefer-offline --no-audit
 
       - name: Build backend
         run: npm run build --workspace=backend
 
       - name: Build and package desktop app
-        working-directory: desktop
-        run: npm run dist
-        env:
-          NODE_ENV: production
+        run: npm run dist --workspace=desktop
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
