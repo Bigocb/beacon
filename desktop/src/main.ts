@@ -2,6 +2,8 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
 import fs from 'fs/promises';
 import dotenv from 'dotenv';
+import { spawn, ChildProcess } from 'child_process';
+import express from 'express';
 import { registerIPC as registerAuthIPC, restoreAuthFromDatabase } from './auth/oauth';
 import { registerScannerIPC } from './scanner/ipc';
 import { registerSyncIPC } from './sync/ipc';
@@ -17,6 +19,60 @@ console.log('GOOGLE_CLIENT_SECRET:', process.env.GOOGLE_CLIENT_SECRET ? '***SET*
 console.log('================================');
 
 let mainWindow: BrowserWindow | null = null;
+let backendProcess: ChildProcess | null = null;
+
+// Start backend server in packaged mode
+async function startBackendServer() {
+  if (app.isPackaged) {
+    console.log('🚀 Starting backend server...');
+    try {
+      const backendDir = path.join(__dirname, '../backend');
+      console.log(`📁 Backend directory: ${backendDir}`);
+
+      backendProcess = spawn('npm', ['start'], {
+        cwd: backendDir,
+        stdio: 'inherit',
+        shell: true,
+      });
+
+      backendProcess.on('error', (error) => {
+        console.error('❌ Backend process error:', error);
+      });
+
+      backendProcess.on('exit', (code) => {
+        console.warn(`⚠️ Backend process exited with code ${code}`);
+        backendProcess = null;
+      });
+
+      // Wait for backend to start
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      console.log('✅ Backend server started');
+    } catch (error) {
+      console.error('❌ Failed to start backend server:', error);
+    }
+  }
+}
+
+async function startRendererServer() {
+  const rendererApp = express();
+  // In packaged mode, renderer is at app.asar/dist/renderer
+  // __dirname is app.asar/dist, so renderer is at ./renderer relative to dist
+  const rendererDir = path.join(__dirname, 'renderer');
+
+  console.log(`📁 Renderer directory: ${rendererDir}`);
+
+  rendererApp.use(express.static(rendererDir));
+  rendererApp.get('*', (req, res) => {
+    res.sendFile(path.join(rendererDir, 'index.html'));
+  });
+
+  return new Promise<string>((resolve) => {
+    const server = rendererApp.listen(3001, '127.0.0.1', () => {
+      console.log('📡 Renderer server started on http://127.0.0.1:3001');
+      resolve('http://127.0.0.1:3001');
+    });
+  });
+}
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
@@ -32,13 +88,12 @@ async function createWindow() {
   const isDev = !app.isPackaged;
   const startUrl = isDev
     ? 'http://localhost:5174'
-    : `file://${path.join(__dirname, '../renderer/index.html')}`;
+    : await startRendererServer();
 
   mainWindow.loadURL(startUrl);
 
-  if (isDev) {
-    mainWindow.webContents.openDevTools();
-  }
+  // Always open dev tools for debugging (temporary)
+  mainWindow.webContents.openDevTools();
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -46,6 +101,9 @@ async function createWindow() {
 }
 
 app.on('ready', async () => {
+  // Start backend server in packaged mode
+  await startBackendServer();
+
   // Restore user auth from database (for app restart persistence)
   try {
     restoreAuthFromDatabase();
@@ -234,6 +292,10 @@ app.on('ready', async () => {
 });
 
 app.on('window-all-closed', () => {
+  // Kill backend process before quitting
+  if (backendProcess) {
+    backendProcess.kill();
+  }
   if (process.platform !== 'darwin') {
     app.quit();
   }

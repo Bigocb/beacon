@@ -22,6 +22,7 @@
     "better-sqlite3": "^9.0.0",
     "chart.js": "^4.5.1",
     "dotenv": "^16.3.1",
+    "express": "^4.18.2",
     "prismarine-nbt": "^2.4.0",
     "react": "^18.2.0",
     "react-chartjs-2": "^5.3.1",
@@ -53,7 +54,10 @@
     "productName": "Beacon",
     "files": [
       "dist/**/*",
-      "node_modules/**/*"
+      "node_modules/**/*",
+      "../backend/dist/**/*",
+      "../backend/node_modules/**/*",
+      "../backend/package.json"
     ],
     "directories": {
       "buildResources": "assets"
