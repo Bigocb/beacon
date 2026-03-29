@@ -1,5 +1,4 @@
 import axios from 'axios';
-import db, { queries } from '../db/sqlite';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
 
@@ -10,61 +9,60 @@ export interface SyncResult {
   error?: string;
 }
 
+// GraphQL helper for sync queries
+async function graphqlQuery(query: string, variables?: any, token?: string) {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await axios.post(`${BACKEND_URL}/graphql`, { query, variables }, { headers });
+  if (response.data.errors) {
+    throw new Error(response.data.errors[0].message);
+  }
+  return response.data.data;
+}
+
+/**
+ * Fetch latest saves from backend API
+ * Replaces local sync queue - directly fetches server state
+ */
 export async function performSync(
   userUuid: string,
   token: string
 ): Promise<SyncResult> {
   try {
-    // Get queued changes from SQLite
-    const queue = queries.getQueuedChanges.all() as any[];
+    console.log('🔄 [Sync] Starting sync for user:', userUuid);
 
-    // Prepare payload
-    const payload = {
-      saves: queue
-        .filter((q) => q.operation !== 'delete')
-        .map((q) => JSON.parse(q.data)),
-      deletes: {
-        saves: queue
-          .filter((q) => q.operation === 'delete')
-          .map((q) => q.save_id),
-      },
-    };
-
-    // Send to server
-    const response = await axios.post(`${BACKEND_URL}/api/sync`, payload, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    const result = response.data;
-
-    // Update local DB with server state
-    if (result.server_state && result.server_state.saves) {
-      const updateStmt = db.transaction((saves: any[]) => {
-        for (const save of saves) {
-          queries.updateSave.run(
-            save.notes || null,
-            save.status || 'active',
-            save.custom_tags ? JSON.stringify(save.custom_tags) : null,
-            save.id
-          );
+    // Fetch latest saves from backend GraphQL API
+    const query = `
+      query {
+        saves(limit: 100) {
+          saves {
+            id
+            folder_id
+            world_name
+            version
+            game_mode
+            difficulty
+            notes
+            status
+            custom_tags
+          }
+          total
         }
-      });
+      }
+    `;
 
-      updateStmt(result.server_state.saves);
-    }
+    const result = await graphqlQuery(query, {}, token);
+    const saves = result.saves?.saves || [];
 
-    // Clear sync queue
-    queries.clearQueue.run();
+    console.log(`✅ [Sync] Fetched ${saves.length} saves from backend`);
 
     return {
       success: true,
-      conflicts: result.conflicts,
-      server_state: result.server_state,
+      server_state: {
+        saves,
+      },
     };
   } catch (error: any) {
-    console.error('Sync error:', error);
+    console.error('❌ [Sync] Error:', error.message);
     return {
       success: false,
       error: error.message || 'Sync failed',
@@ -72,6 +70,10 @@ export async function performSync(
   }
 }
 
+/**
+ * Start periodic sync to keep saves updated from backend
+ * Interval runs independently without local queue persistence
+ */
 export async function startPeriodicSync(
   userUuid: string,
   token: string,
@@ -80,9 +82,9 @@ export async function startPeriodicSync(
   const sync = async () => {
     const result = await performSync(userUuid, token);
     if (!result.success) {
-      console.error('Periodic sync failed:', result.error);
+      console.error('❌ Periodic sync failed:', result.error);
     } else {
-      console.log('Sync completed successfully');
+      console.log('✅ Sync completed successfully');
     }
   };
 

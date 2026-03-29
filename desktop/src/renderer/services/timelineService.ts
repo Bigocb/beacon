@@ -6,7 +6,17 @@
 import axios from 'axios';
 import { TimelineEvent, NoteUI, MilestoneUI } from '../types/enrichment';
 
-const API_BASE = 'http://localhost:3000/api';
+const API_BASE = 'http://localhost:3000';
+
+// GraphQL helper
+async function graphqlQuery(query: string, variables?: any, token?: string | null) {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await axios.post(`${API_BASE}/graphql`, { query, variables }, { headers });
+  if (response.data.errors) {
+    throw new Error(response.data.errors[0].message);
+  }
+  return response.data.data;
+}
 
 // ============================================
 // TIMELINE SERVICE
@@ -19,25 +29,31 @@ const API_BASE = 'http://localhost:3000/api';
  */
 export async function fetchTimelineEvents(saveId: string, playerUUID?: string): Promise<TimelineEvent[]> {
   try {
+    const token = localStorage.getItem('minecraft_tracker_auth_token');
     console.log('📅 [Frontend] Fetching timeline events for save:', saveId, playerUUID ? `(player: ${playerUUID})` : '');
 
-    // Build URLs with optional player filter
-    let notesUrl = `${API_BASE}/saves/${saveId}/notes`;
-    let milestonesUrl = `${API_BASE}/saves/${saveId}/milestones`;
+    const query = `
+      query timelineEvents($saveId: String!) {
+        notes(saveId: $saveId) {
+          id
+          title
+          content
+          note_type
+          timestamp
+        }
+        milestones(saveId: $saveId) {
+          id
+          name
+          description
+          achieved_at
+          created_at
+        }
+      }
+    `;
 
-    if (playerUUID) {
-      notesUrl += `?player_uuid=${encodeURIComponent(playerUUID)}`;
-      milestonesUrl += `?player_uuid=${encodeURIComponent(playerUUID)}`;
-    }
-
-    // Fetch notes and milestones in parallel
-    const [notesRes, milestonesRes] = await Promise.all([
-      axios.get(notesUrl),
-      axios.get(milestonesUrl),
-    ]);
-
-    const rawNotes = notesRes.data.notes || [];
-    const rawMilestones = milestonesRes.data.milestones || [];
+    const result = await graphqlQuery(query, { saveId }, token);
+    const rawNotes = result.notes || [];
+    const rawMilestones = result.milestones || [];
 
     console.log(`✅ [Frontend] Fetched ${rawNotes.length} notes and ${rawMilestones.length} milestones`);
 
@@ -109,15 +125,26 @@ export async function fetchTimelineEvents(saveId: string, playerUUID?: string): 
  */
 export async function fetchMilestones(saveId: string, playerUUID?: string): Promise<any[]> {
   try {
-    let url = `${API_BASE}/saves/${saveId}/milestones`;
-    if (playerUUID) {
-      url += `?player_uuid=${encodeURIComponent(playerUUID)}`;
-    }
-    console.log('🎯 [Frontend] Fetching milestones from:', url);
-    const response = await axios.get(url);
-    console.log('✅ [Frontend] Milestones response:', response.data);
+    const token = localStorage.getItem('minecraft_tracker_auth_token');
+    const query = `
+      query milestones($saveId: String!) {
+        milestones(saveId: $saveId) {
+          id
+          name
+          description
+          target_play_time_ticks
+          achieved_at
+          position
+          created_at
+          updated_at
+        }
+      }
+    `;
+    console.log('🎯 [Frontend] Fetching milestones via GraphQL for save:', saveId);
+    const result = await graphqlQuery(query, { saveId }, token);
+    console.log('✅ [Frontend] Milestones response:', result);
 
-    return response.data.milestones || [];
+    return result.milestones || [];
   } catch (error) {
     console.error('❌ [Frontend] Error fetching milestones:', error);
     throw error;
@@ -139,17 +166,27 @@ export async function createMilestone(
   playerUUID?: string
 ): Promise<any> {
   try {
-    const url = `${API_BASE}/saves/${saveId}/milestones`;
-    const payload: any = data;
-    if (playerUUID) {
-      payload.player_uuid = playerUUID;
-    }
-    console.log('🎯 [Frontend] Creating milestone at:', url);
-    console.log('📋 [Frontend] Milestone data:', payload);
-    const response = await axios.post(url, payload);
-    console.log('✅ [Frontend] Create milestone response:', response.data);
+    const token = localStorage.getItem('minecraft_tracker_auth_token');
+    const query = `
+      mutation createMilestone($saveId: String!, $data: CreateMilestoneInput!) {
+        createMilestone(saveId: $saveId, data: $data) {
+          id
+          name
+          description
+          target_play_time_ticks
+          achieved_at
+          position
+          created_at
+          updated_at
+        }
+      }
+    `;
+    console.log('🎯 [Frontend] Creating milestone via GraphQL for save:', saveId);
+    console.log('📋 [Frontend] Milestone data:', data);
+    const result = await graphqlQuery(query, { saveId, data }, token);
+    console.log('✅ [Frontend] Create milestone response:', result);
 
-    return response.data.milestone;
+    return result.createMilestone;
   } catch (error) {
     console.error('❌ [Frontend] Error creating milestone:', error);
     throw error;
@@ -171,13 +208,35 @@ export async function updateMilestone(
   }
 ): Promise<any> {
   try {
-    const url = `${API_BASE}/saves/${saveId}/milestones/${milestoneId}`;
-    console.log('🎯 [Frontend] Updating milestone at:', url);
-    console.log('📋 [Frontend] Update data:', data);
-    const response = await axios.patch(url, data);
-    console.log('✅ [Frontend] Update milestone response:', response.data);
+    const token = localStorage.getItem('minecraft_tracker_auth_token');
+    const query = `
+      mutation updateMilestone($id: String!, $data: UpdateMilestoneInput!) {
+        updateMilestone(id: $id, data: $data) {
+          id
+          name
+          description
+          target_play_time_ticks
+          achieved_at
+          position
+          created_at
+          updated_at
+        }
+      }
+    `;
 
-    return response.data.milestone;
+    const updateData: any = {};
+    if (data.name !== undefined) updateData.name = data.name || undefined;
+    if (data.description !== undefined) updateData.description = data.description || undefined;
+    if (data.target_play_time_ticks !== undefined) updateData.target_play_time_ticks = data.target_play_time_ticks;
+    if (data.position !== undefined) updateData.position = data.position;
+    if (data.achieved_at !== undefined) updateData.achieved_at = data.achieved_at?.toISOString() || undefined;
+
+    console.log('🎯 [Frontend] Updating milestone via GraphQL');
+    console.log('📋 [Frontend] Update data:', updateData);
+    const result = await graphqlQuery(query, { id: milestoneId, data: updateData }, token);
+    console.log('✅ [Frontend] Update milestone response:', result);
+
+    return result.updateMilestone;
   } catch (error) {
     console.error('❌ [Frontend] Error updating milestone:', error);
     throw error;
@@ -189,10 +248,15 @@ export async function updateMilestone(
  */
 export async function deleteMilestone(saveId: string, milestoneId: string): Promise<void> {
   try {
-    const url = `${API_BASE}/saves/${saveId}/milestones/${milestoneId}`;
-    console.log('🎯 [Frontend] Deleting milestone at:', url);
-    const response = await axios.delete(url);
-    console.log('✅ [Frontend] Delete milestone response:', response.data);
+    const token = localStorage.getItem('minecraft_tracker_auth_token');
+    const query = `
+      mutation deleteMilestone($id: String!) {
+        deleteMilestone(id: $id)
+      }
+    `;
+    console.log('🎯 [Frontend] Deleting milestone via GraphQL');
+    const result = await graphqlQuery(query, { id: milestoneId }, token);
+    console.log('✅ [Frontend] Delete milestone response:', result);
   } catch (error) {
     console.error('❌ [Frontend] Error deleting milestone:', error);
     throw error;

@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/bigoc/dev/beacon/backend/**)",
+      "Bash(npm test:*)",
+      "Bash(/tmp/test_graphql.sh:*)",
+      "Bash(chmod +x /tmp/test_graphql.sh)",
+      "Bash(bash /tmp/test_graphql.sh)",
+      "Bash(/tmp/test_mutations.sh:*)",
+      "Bash(chmod +x /tmp/test_mutations.sh)",
+      "Bash(bash /tmp/test_mutations.sh)",
+      "Bash(curl -s http://localhost:3000/graphql -X POST -H \"Content-Type: application/json\" -d '{\"\"query\"\":\"\"{ __typename }\"\"}')",
+      "Bash(/tmp/test_with_logs.sh:*)",
+      "Bash(chmod +x /tmp/test_with_logs.sh)",
+      "Bash(bash /tmp/test_with_logs.sh)",
+      "Bash(curl -s http://localhost:3000/health)",
+      "Bash(python3 -m json.tool)",
+      "Bash(npm run:*)",
+      "Bash(pkill -f \"node.*dist/index.js\")",
+      "Bash(curl -X POST http://localhost:3000/auth/local -H \"Content-Type: application/json\" -d '{\"\"\"\"username\"\"\"\":\"\"\"\"testuser\"\"\"\"}')",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1dWlkIjoibG9jYWwtNTU1YmU5MTEtMWQ0Ny00ZmVjLTg1Y2QtOTUxYzQwMDc5Nzg2IiwiaWF0IjoxNzc0NTcxMTg1LCJleHAiOjE3NzUxNzU5ODV9.OuN86c2OugdZOiK83J2oSEgYOwg-DKNMtSG6Udmi_Io\")",
+      "Bash(__NEW_LINE_bb8deed1e8aa9c8a__ curl -X POST http://localhost:3000/graphql -H \"Content-Type: application/json\" -H \"Authorization: Bearer $TOKEN\" -d '{:*)",
+      "Bash(npm list:*)",
+      "Bash(sqlite3 /c/Users/bigoc/.beacon/beacon.db '.schema saves')",
+      "Bash(sleep 15 echo \"=== Frontend Log \\(Electron startup\\) ===\" tail -80 /tmp/frontend.log)",
+      "Bash(xargs kill:*)",
+      "Bash(killall -9 node)",
+      "Bash(git add:*)",
+      "Bash(__NEW_LINE_58bd76dda98be64d__ git commit -m \"fix: expose file_path in GraphQL saves query for player data loading:*)",
+      "Bash(__NEW_LINE_b8cef4dc1dcb07b1__ git commit -m \"fix: expose file_path in GraphQL saves query for player data loading:*)",
+      "Bash(cd /c/Users/bigoc/dev/beacon/desktop npm run build)",
+      "Bash(cd /c/Users/bigoc/dev/beacon/backend npm run build)"
+    ]
+  }
+}

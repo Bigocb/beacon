@@ -115,18 +115,46 @@ try {
     }, {}),
   };
 
+  console.log('📝 [Schema] Wrapped resolvers.Query keys:', Object.keys(wrappedResolvers.Query).slice(0, 10));
+  if (wrappedResolvers.Query.myStats) {
+    console.log('✅ [Schema] myStats resolver found in wrappedResolvers');
+  } else {
+    console.warn('⚠️  [Schema] myStats resolver NOT in wrappedResolvers!');
+  }
+
   console.log('🔨 [Schema] Building executable schema...');
-  schema = makeExecutableSchema({
-    typeDefs: typeDefsString,
-    resolvers: wrappedResolvers,
-  });
-  console.log('✅ [Schema] Schema built successfully');
+  try {
+    schema = makeExecutableSchema({
+      typeDefs: typeDefsString,
+      resolvers: wrappedResolvers,
+      assumeValidSDL: false,  // Enable validation
+    });
+    console.log('✅ [Schema] Schema built successfully');
+  } catch (buildErr: any) {
+    console.error('❌ [Schema] makeExecutableSchema error:', buildErr.message);
+    console.error('Details:', buildErr);
+    throw buildErr;
+  }
 
   // Debug: Check Save type fields
   const SaveType = schema.getType('Save');
   if (SaveType) {
     const fields = SaveType.getFields ? SaveType.getFields() : SaveType._fields;
-    console.log('📝 [Schema] Save type fields:', Object.keys(fields || {}));
+    console.log('📝 [Schema] Save type fields:', Object.keys(fields || {}).slice(0, 5));
+  }
+
+  // Debug: Check Query type fields
+  const QueryType = schema.getType('Query');
+  if (QueryType) {
+    const queryFields = QueryType.getFields ? QueryType.getFields() : QueryType._fields;
+    const queryFieldNames = Object.keys(queryFields || {});
+    console.log(`📝 [Schema] Query type has ${queryFieldNames.length} fields`);
+    if (queryFieldNames.includes('myStats')) {
+      console.log('✅ [Schema] myStats field found in Query');
+    } else {
+      console.warn('⚠️  [Schema] myStats field NOT in Query!');
+      console.log('Available Query fields:', queryFieldNames);
+    }
   }
 } catch (err) {
   console.error('❌ Failed to build GraphQL schema:', err);

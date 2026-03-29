@@ -76,6 +76,35 @@ export const typeDefs = gql`
     xp: Float
   }
 
+  type UserStats {
+    user_uuid: String!
+    username: String!
+    saves_count: Int!
+    total_playtime_ticks: Int!
+    total_playtime_hours: Float!
+    highest_level: Int!
+    total_mobs_killed: Int!
+    total_blocks_mined: Int!
+    total_blocks_placed: Int!
+    total_deaths: Int!
+    total_damage_taken: Float!
+    total_food_eaten: Int!
+    total_beds_slept_in: Int!
+    total_items_crafted: Int!
+    worlds_visited: Int!
+    average_playtime_per_world: Float!
+    updated_at: String!
+  }
+
+  type LeaderboardEntry {
+    rank: Int!
+    username: String!
+    user_uuid: String!
+    saves_count: Int!
+    value: Float!
+    metric: String!
+  }
+
   type Tag {
     id: String!
     user_uuid: String!
@@ -157,6 +186,10 @@ export const typeDefs = gql`
 
     # Metadata queries
     metadata(saveId: String!): WorldMetadata
+
+    # Stats & Leaderboard queries
+    myStats: UserStats
+    leaderboard(metric: String!, limit: Int): [LeaderboardEntry!]!
   }
 
   type SaveConnection {

@@ -3,6 +3,7 @@ import { typeDefs } from './schema';
 import { resolvers } from './resolvers';
 import { Express, Request, Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth';
+import { verifyJWT } from '../auth/oauth';
 
 // Create executable schema
 const schema = buildSchema(typeDefs.loc!.source.body);
@@ -13,6 +14,15 @@ export async function setupGraphQL(app: Express) {
 
     if (!query) {
       return res.status(400).json({ error: 'No query provided' });
+    }
+
+    // Authenticate the request so resolvers can access req.user
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (token) {
+      const decoded = verifyJWT(token);
+      if (decoded) {
+        req.user = decoded;
+      }
     }
 
     try {
