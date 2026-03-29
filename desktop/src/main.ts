@@ -311,7 +311,21 @@ app.on('ready', async () => {
 app.on('window-all-closed', () => {
   // Kill backend process before quitting
   if (backendProcess) {
-    backendProcess.kill();
+    const proc = backendProcess;
+    console.log('🛑 Killing backend process (PID:', proc.pid, ')');
+    try {
+      // Try graceful shutdown first
+      proc.kill('SIGTERM');
+      // If still running after 2 seconds, force kill
+      setTimeout(() => {
+        if (!proc.killed) {
+          console.log('⚠️ Backend still running, force killing...');
+          proc.kill('SIGKILL');
+        }
+      }, 2000);
+    } catch (error) {
+      console.error('Error killing backend:', error);
+    }
   }
   if (process.platform !== 'darwin') {
     app.quit();
