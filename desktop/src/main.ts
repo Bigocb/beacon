@@ -27,7 +27,6 @@ async function startBackendServer() {
     console.log('🚀 Starting backend server...');
     try {
       const backendDir = path.join(__dirname, '../backend');
-      console.log(`📁 Backend directory: ${backendDir}`);
 
       backendProcess = spawn('npm', ['start'], {
         cwd: backendDir,
@@ -44,9 +43,24 @@ async function startBackendServer() {
         backendProcess = null;
       });
 
-      // Wait for backend to start
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      console.log('✅ Backend server started');
+      // Wait for backend health check instead of fixed delay
+      let attempts = 0;
+      const maxAttempts = 30; // 30 attempts * 100ms = 3 seconds max
+      while (attempts < maxAttempts) {
+        try {
+          const response = await fetch('http://localhost:3000/health');
+          if (response.ok) {
+            console.log('✅ Backend server ready');
+            return;
+          }
+        } catch {
+          // Backend not ready yet, try again
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+      }
+
+      console.warn('⚠️ Backend health check timed out, but proceeding anyway');
     } catch (error) {
       console.error('❌ Failed to start backend server:', error);
     }
@@ -75,6 +89,8 @@ async function startRendererServer() {
 }
 
 async function createWindow() {
+  const isDev = !app.isPackaged;
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -85,15 +101,16 @@ async function createWindow() {
     },
   });
 
-  const isDev = !app.isPackaged;
   const startUrl = isDev
     ? 'http://localhost:5174'
     : await startRendererServer();
 
   mainWindow.loadURL(startUrl);
 
-  // Always open dev tools for debugging (temporary)
-  mainWindow.webContents.openDevTools();
+  // Open dev tools only in development mode
+  if (isDev) {
+    mainWindow.webContents.openDevTools();
+  }
 
   mainWindow.on('closed', () => {
     mainWindow = null;
