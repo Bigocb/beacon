@@ -52,6 +52,7 @@
   "build": {
     "appId": "com.beacon.app",
     "productName": "Beacon",
+    "electronVersion": "27.0.0",
     "files": [
       "dist/**/*",
       "node_modules/**/*",
