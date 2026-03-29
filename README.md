@@ -1,4 +1,4 @@
-# 🎮 Minecraft Save Tracker
+# 🎮 Beacon - a minecraft save manager (and more!)
 
 A cross-platform application for tracking and managing your Minecraft saves across all devices.
 
