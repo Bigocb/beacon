@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { PlayerData } from '../../scanner/player-parser';
 import PlayerInfoTab from '../components/PlayerInfoTab';
-import { NoteList, NoteEditor, Timeline, WorldMetadataEditor, AdvancementsTab } from '../components/shared';
+import { NoteList, NoteEditor, WorldMetadataEditor } from '../components/shared';
+import Timeline from '../components/Timeline';
+import AdvancementsTab from '../components/AdvancementsTab';
 import { NoteUI, TagUI, WorldMetadataUI } from '../types/enrichment';
 import * as notesService from '../services/notesService';
 import * as metadataService from '../services/metadataService';
@@ -1432,22 +1434,26 @@ export const SaveAnalyticsPage: React.FC<SaveAnalyticsPageProps> = ({ saveData, 
 
         {activeTab === 'timeline' && (
           <div className="save-analytics-tab-content">
-            <Timeline
-              events={timelineEvents}
-              loading={loadingTimeline}
-              onSelectEvent={(event) => {
-                console.log('Selected timeline event:', event);
-              }}
-            />
+            <Suspense fallback={<div style={{ padding: '20px', textAlign: 'center', color: '#888' }}>Loading timeline...</div>}>
+              <Timeline
+                events={timelineEvents}
+                loading={loadingTimeline}
+                onSelectEvent={(event) => {
+                  console.log('Selected timeline event:', event);
+                }}
+              />
+            </Suspense>
           </div>
         )}
 
         {activeTab === 'advancements' && advancementData && (
           <div className="save-analytics-tab-content">
-            <AdvancementsTab
-              advancements={advancementData.advancements}
-              loading={loadingProgress}
-            />
+            <Suspense fallback={<div style={{ padding: '20px', textAlign: 'center', color: '#888' }}>Loading advancements...</div>}>
+              <AdvancementsTab
+                advancements={advancementData.advancements}
+                loading={loadingProgress}
+              />
+            </Suspense>
           </div>
         )}
       </TabContent>
