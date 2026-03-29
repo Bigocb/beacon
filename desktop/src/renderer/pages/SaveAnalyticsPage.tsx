@@ -504,11 +504,11 @@ export const SaveAnalyticsPage: React.FC<SaveAnalyticsPageProps> = ({ saveData, 
     loadStatsData();
   }, [selectedPlayerUUID, saveData?.file_path, activeTab]);
 
-  // Load exploration data when exploration tab is active
+  // Load exploration data when exploration or timeline tab is active
   useEffect(() => {
     const loadExplorationData = async () => {
       const savePath = saveData?.file_path || saveData?.path;
-      if (!savePath || activeTab !== 'exploration') {
+      if (!savePath || (activeTab !== 'exploration' && activeTab !== 'timeline')) {
         return;
       }
 
