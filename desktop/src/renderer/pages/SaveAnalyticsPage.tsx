@@ -608,7 +608,13 @@ export const SaveAnalyticsPage: React.FC<SaveAnalyticsPageProps> = ({ saveData, 
   // Load timeline events (filtered by selected player)
   useEffect(() => {
     const loadTimeline = async () => {
-      if (!saveData?.id || activeTab !== 'timeline') return;
+      console.log('📅 [Timeline] useEffect triggered - activeTab:', activeTab, 'saveId:', saveData?.id, 'playerUUID:', selectedPlayerUUID);
+      console.log('📊 [Timeline] Data states - advancementData:', !!advancementData, 'explorationData:', !!explorationData, 'statisticsData:', !!statisticsData);
+
+      if (!saveData?.id || activeTab !== 'timeline') {
+        console.log('📅 [Timeline] Skipping - missing saveId or tab is not timeline');
+        return;
+      }
 
       setLoadingTimeline(true);
       try {
@@ -616,15 +622,15 @@ export const SaveAnalyticsPage: React.FC<SaveAnalyticsPageProps> = ({ saveData, 
 
         // Fetch database events (notes + milestones) filtered by player
         const dbEvents = await timelineService.fetchTimelineEvents(saveData.id, selectedPlayerUUID);
-        console.log('✅ [Frontend] DB events loaded:', dbEvents.length);
+        console.log('✅ [Frontend] DB events loaded:', dbEvents.length, dbEvents);
 
         // Generate game progress events from advancements, exploration, and statistics
         const gameEvents = generateGameProgressEvents(advancementData, explorationData, statisticsData);
-        console.log('✅ [Frontend] Game progress events generated:', gameEvents.length);
+        console.log('✅ [Frontend] Game progress events generated:', gameEvents.length, gameEvents);
 
         // Combine and sort all events
         const allEvents = [...dbEvents, ...gameEvents].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-        console.log('✅ [Frontend] Total timeline events:', allEvents.length);
+        console.log('✅ [Frontend] Total timeline events:', allEvents.length, 'events:', allEvents);
         setTimelineEvents(allEvents);
       } catch (error) {
         console.error('❌ [Frontend] Error loading timeline:', error);
